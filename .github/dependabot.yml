@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Keep pinned GitHub Action SHAs fresh.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Also keep the reusable composite action in sync.
+  - package-ecosystem: github-actions
+    directory: /.github/actions/setup-rust
+    schedule:
+      interval: weekly
+
+  # Cargo dependencies.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo-minor-patch:
+        update-types:
+          - minor
+          - patch
