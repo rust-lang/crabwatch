@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{ArgGroup, Parser, Subcommand};
 use std::path::PathBuf;
 
 /// Analyze CI and best practices across Rust project repos
@@ -23,28 +23,28 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// List the Rust project repos
-    ListRepos,
-    /// Download workflow files for a repo
-    Fetch {
-        /// Repo in the form owner/name
-        repo: String,
-    },
-    /// Run zizmor on a repo's cached workflows
+    /// Analyze a repository or an organization
+    #[command(group(ArgGroup::new("target").required(true).args(["repo", "org"])))]
     Analyze {
-        /// Repo in the form owner/name
-        repo: String,
+        /// Analyze a single repository
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Analyze every repository in an organization
+        #[arg(long)]
+        org: Option<String>,
+
+        /// Specific check to run (runs all if omitted)
+        #[arg(long)]
+        check: Option<String>,
     },
-    /// List, fetch, and analyze every repo
-    Run,
 }
 
 fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Command::ListRepos => println!("list-repos: not implemented yet"),
-        Command::Fetch { repo } => println!("fetch {repo}: not implemented yet"),
-        Command::Analyze { repo } => println!("analyze {repo}: not implemented yet"),
-        Command::Run => println!("run: not implemented yet"),
+        Command::Analyze { repo, org, check } => {
+            println!("analyze repo={repo:?} org={org:?} check={check:?}");
+        }
     }
 }
