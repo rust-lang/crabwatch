@@ -1,3 +1,4 @@
+use anyhow::{bail, Result};
 use clap::{ArgGroup, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -40,11 +41,19 @@ enum Command {
     },
 }
 
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Analyze { repo, org, check } => {
-            println!("analyze repo={repo:?} org={org:?} check={check:?}");
+        Command::Analyze { repo: repo_arg, org, check } => {
+            if let Some(repo_arg) = repo_arg {
+                let parts: Vec<&str> = repo_arg.split('/').collect();
+                if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+                    bail!("--repo must be in the form owner/name");
+                }
+                let (org, repo) = (parts[0], parts[1]);
+                println!("parsed org={org} repo={repo}");
+            }
         }
     }
+    Ok(())
 }
