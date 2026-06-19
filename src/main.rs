@@ -1,6 +1,8 @@
 use clap::{ArgGroup, Parser, Subcommand};
 use std::path::PathBuf;
 
+mod command;
+
 /// Analyze CI and best practices across Rust project repos
 #[derive(Parser)]
 #[command(name = "crabwatch", version, about, long_about = None)]
@@ -40,11 +42,16 @@ enum Command {
     },
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Analyze { repo, org, check } => {
-            println!("analyze repo={repo:?} org={org:?} check={check:?}");
+        Command::Analyze {
+            repo,
+            org,
+            check: _,
+        } => {
+            command::analyze::run(repo, org)?;
         }
     }
+    Ok(())
 }
