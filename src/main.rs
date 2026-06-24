@@ -50,7 +50,7 @@ fn main() -> anyhow::Result<()> {
             org,
             check: _,
         } => {
-            command::analyze::run(repo, org)?;
+            command::analyze::run(repo, org, cli.cache_dir.as_deref())?;
         }
     }
     Ok(())
