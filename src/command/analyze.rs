@@ -1,3 +1,4 @@
+use crate::github;
 use anyhow::bail;
 use std::path::{Path, PathBuf};
 
@@ -26,13 +27,24 @@ pub fn cache_path(repo: &ParsedRepo, cache_dir_override: Option<&Path>) -> Optio
     Some(base.join("repos").join(&repo.org).join(&repo.repo))
 }
 
-pub fn run(
+pub async fn run(
     repo_arg: Option<String>,
     org_arg: Option<String>,
     cache_dir_override: Option<&Path>,
+    token: Option<&str>,
 ) -> anyhow::Result<()> {
     if let Some(repo_arg) = repo_arg {
         let parsed = parse_repo(&repo_arg)?;
+
+        let token = token.ok_or_else(|| {
+            anyhow::anyhow!("a GitHub token is required (--github-token or GITHUB_TOKEN env var)")
+        })?;
+
+        let client = reqwest::Client::new();
+        let sha = github::fetch_head_commit(&client, &parsed.org, &parsed.repo, token).await?;
+
+        println!("HEAD commit: {sha}");
+
         match cache_path(&parsed, cache_dir_override) {
             Some(path) => println!("cache path: {}", path.display()),
             None => eprintln!(
