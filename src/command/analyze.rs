@@ -1,5 +1,6 @@
 use crate::github;
-use anyhow::bail;
+use anyhow::{Context as _, bail};
+
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, PartialEq)]
@@ -36,9 +37,8 @@ pub async fn run(
     if let Some(repo_arg) = repo_arg {
         let parsed = parse_repo(&repo_arg)?;
 
-        let token = token.ok_or_else(|| {
-            anyhow::anyhow!("a GitHub token is required (--github-token or GITHUB_TOKEN env var)")
-        })?;
+        let token =
+            token.context("a GitHub token is required (--github-token or GITHUB_TOKEN env var)")?;
 
         let client = reqwest::Client::new();
         let sha = github::fetch_head_commit(&client, &parsed.org, &parsed.repo, token).await?;
