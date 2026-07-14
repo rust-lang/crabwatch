@@ -2,6 +2,7 @@ use clap::{ArgGroup, Parser, Subcommand};
 use std::path::PathBuf;
 
 mod command;
+mod github;
 
 /// Analyze CI and best practices across Rust project repos
 #[derive(Parser)]
@@ -42,7 +43,8 @@ enum Command {
     },
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Analyze {
@@ -50,7 +52,13 @@ fn main() -> anyhow::Result<()> {
             org,
             check: _,
         } => {
-            command::analyze::run(repo, org, cli.cache_dir.as_deref())?;
+            command::analyze::run(
+                repo,
+                org,
+                cli.cache_dir.as_deref(),
+                cli.github_token.as_deref(),
+            )
+            .await?;
         }
     }
     Ok(())
