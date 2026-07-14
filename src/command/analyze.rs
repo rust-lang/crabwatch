@@ -1,4 +1,4 @@
-use crate::github;
+use crate::{clone, github};
 use anyhow::{Context as _, bail};
 
 use std::path::{Path, PathBuf};
@@ -20,12 +20,21 @@ pub fn parse_repo(input: &str) -> anyhow::Result<ParsedRepo> {
     })
 }
 
-pub fn cache_path(repo: &ParsedRepo, cache_dir_override: Option<&Path>) -> Option<PathBuf> {
+pub fn cache_path(
+    repo: &ParsedRepo,
+    cache_dir_override: Option<&Path>,
+    sha: &str,
+) -> Option<PathBuf> {
     let base = match cache_dir_override {
         Some(path) => path.to_path_buf(),
         None => dirs::cache_dir()?.join("crabwatch"),
     };
-    Some(base.join("repos").join(&repo.org).join(&repo.repo))
+    Some(
+        base.join("repos")
+            .join(&repo.org)
+            .join(&repo.repo)
+            .join(sha),
+    )
 }
 
 pub async fn run(
@@ -45,11 +54,18 @@ pub async fn run(
 
         println!("HEAD commit: {sha}");
 
-        match cache_path(&parsed, cache_dir_override) {
-            Some(path) => println!("cache path: {}", path.display()),
-            None => eprintln!(
-                "warning: could not determine a cache directory; results will not be cached"
-            ),
+        let path = cache_path(&parsed, cache_dir_override, &sha)
+            .context("no cache directory available; try passing --cache-dir")?;
+
+        if path.join(".git").exists() {
+            println!("cache hit: {}", path.display());
+        } else {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .context("failed to create cache parent directory")?;
+            }
+            println!("cloning into: {}", path.display());
+            clone::clone_repo(&parsed.org, &parsed.repo, &path)?;
         }
     } else if org_arg.is_some() {
         bail!("--org is not yet supported");
@@ -98,13 +114,14 @@ mod tests {
             org: "rust-lang".to_string(),
             repo: "crabwatch".to_string(),
         };
-        let path = cache_path(&repo, None).unwrap();
+        let path = cache_path(&repo, None, "abc123").unwrap();
         let expected = dirs::cache_dir()
             .unwrap()
             .join("crabwatch")
             .join("repos")
             .join("rust-lang")
-            .join("crabwatch");
+            .join("crabwatch")
+            .join("abc123");
         assert_eq!(path, expected);
     }
 
@@ -115,10 +132,10 @@ mod tests {
             repo: "crabwatch".to_string(),
         };
         let override_dir = Path::new("/tmp/test-cache");
-        let path = cache_path(&repo, Some(override_dir)).unwrap();
+        let path = cache_path(&repo, Some(override_dir), "abc123").unwrap();
         assert_eq!(
             path,
-            PathBuf::from("/tmp/test-cache/repos/rust-lang/crabwatch")
+            PathBuf::from("/tmp/test-cache/repos/rust-lang/crabwatch/abc123")
         );
     }
 }
