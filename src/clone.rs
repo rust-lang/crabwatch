@@ -18,18 +18,21 @@ pub fn clone_repo(
 
     let url = format!("https://github.com/{org}/{repo}.git");
 
-    let status = Command::new("git")
+    let output = Command::new("git")
         .arg("clone")
         .arg("--depth")
         .arg("1")
         .arg(&url)
         .arg(&temp_dest)
-        .status()
+        .output()
         .context("failed to run git clone")?;
 
-    if !status.success() {
+    if !output.status.success() {
+        if !output.stderr.is_empty() {
+            eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+        }
         let _ = std::fs::remove_dir_all(&temp_dest);
-        bail!("git clone failed for {org}/{repo} ({status})");
+        bail!("git clone failed for {org}/{repo} ({})", output.status);
     }
 
     let actual_sha = head_sha(&temp_dest)?;
