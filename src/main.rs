@@ -1,6 +1,7 @@
 use clap::{ArgGroup, Parser, Subcommand};
 use std::path::PathBuf;
 
+mod clone;
 mod command;
 mod github;
 
