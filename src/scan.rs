@@ -1,0 +1,33 @@
+use anyhow::{Context as _, bail};
+use std::io::ErrorKind;
+use std::path::Path;
+use std::process::Command;
+
+const ZIZMOR_CONFIG: &str = include_str!("../zizmor-default.yml");
+
+pub fn scan_workflows(repo_path: &Path) -> anyhow::Result<()> {
+    let config_path = std::env::temp_dir().join("crabwatch-zizmor-default.yml");
+    std::fs::write(&config_path, ZIZMOR_CONFIG)
+        .context("failed to write zizmor config to a temporary file")?;
+
+    let status = Command::new("zizmor")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--no-exit-codes")
+        .arg(repo_path)
+        .status();
+
+    let status = match status {
+        Ok(status) => status,
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            bail!("zizmor is not installed; see https://docs.zizmor.sh/installation/");
+        }
+        Err(err) => return Err(err).context("failed to run zizmor"),
+    };
+
+    if !status.success() {
+        bail!("zizmor failed ({status})");
+    }
+
+    Ok(())
+}

@@ -1,4 +1,4 @@
-use crate::{clone, github};
+use crate::{clone, github, scan};
 use anyhow::{Context as _, bail};
 
 use std::path::{Path, PathBuf};
@@ -67,6 +67,8 @@ pub async fn run(
             println!("cloning into: {}", path.display());
             clone::clone_repo(&parsed.org, &parsed.repo, &path, &sha)?;
         }
+
+        scan::scan_workflows(&path)?;
     } else if org_arg.is_some() {
         bail!("--org is not yet supported");
     }

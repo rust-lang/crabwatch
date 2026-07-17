@@ -4,6 +4,7 @@ use std::path::PathBuf;
 mod clone;
 mod command;
 mod github;
+mod scan;
 
 /// Analyze CI and best practices across Rust project repos
 #[derive(Parser)]

@@ -1,0 +1,9 @@
+# Default zizmor configuration used by crabwatch.
+#
+# crabwatch ships this file and applies it when scanning repositories,
+# so every scan uses the same ruleset regardless of what zizmor config
+# a target repository has of its own.
+#
+# Individual audits can be tuned under `rules`. For now we run zizmor's
+# full default audit set.
+rules: {}
