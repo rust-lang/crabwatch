@@ -20,21 +20,21 @@ pub fn parse_repo(input: &str) -> anyhow::Result<ParsedRepo> {
     })
 }
 
-pub fn cache_path(
-    repo: &ParsedRepo,
-    cache_dir_override: Option<&Path>,
-    sha: &str,
-) -> Option<PathBuf> {
-    let base = match cache_dir_override {
-        Some(path) => path.to_path_buf(),
-        None => dirs::cache_dir()?.join("crabwatch"),
-    };
-    Some(
-        base.join("repos")
-            .join(&repo.org)
-            .join(&repo.repo)
-            .join(sha),
-    )
+fn crabwatch_dir(cache_dir_override: Option<&Path>) -> anyhow::Result<PathBuf> {
+    match cache_dir_override {
+        Some(path) => Ok(path.to_path_buf()),
+        None => dirs::cache_dir()
+            .map(|path| path.join("crabwatch"))
+            .context("no cache directory available; try passing --cache-dir"),
+    }
+}
+
+pub fn cache_path(repo: &ParsedRepo, crabwatch_dir: &Path, sha: &str) -> PathBuf {
+    crabwatch_dir
+        .join("repos")
+        .join(&repo.org)
+        .join(&repo.repo)
+        .join(sha)
 }
 
 pub async fn run(
@@ -54,8 +54,8 @@ pub async fn run(
 
         println!("HEAD commit: {sha}");
 
-        let path = cache_path(&parsed, cache_dir_override, &sha)
-            .context("no cache directory available; try passing --cache-dir")?;
+        let crabwatch_dir = crabwatch_dir(cache_dir_override)?;
+        let path = cache_path(&parsed, &crabwatch_dir, &sha);
 
         if path.exists() {
             println!("cache hit: {}", path.display());
@@ -68,7 +68,7 @@ pub async fn run(
             clone::clone_repo(&parsed.org, &parsed.repo, &path, &sha)?;
         }
 
-        scan::scan_workflows(&path, token)?;
+        scan::scan_workflows(&path, &crabwatch_dir, token)?;
     } else if org_arg.is_some() {
         bail!("--org is not yet supported");
     }
@@ -115,7 +115,8 @@ mod tests {
     fn cache_path_default_uses_cache_dir() {
         let repo = test_repo();
         let sha = "abc123";
-        let path = cache_path(&repo, None, sha).unwrap();
+        let crabwatch_dir = crabwatch_dir(None).unwrap();
+        let path = cache_path(&repo, &crabwatch_dir, sha);
         let expected = dirs::cache_dir()
             .unwrap()
             .join("crabwatch")
@@ -131,7 +132,8 @@ mod tests {
         let repo = test_repo();
         let sha = "abc123";
         let override_dir = Path::new("/tmp/test-cache");
-        let path = cache_path(&repo, Some(override_dir), sha).unwrap();
+        let crabwatch_dir = crabwatch_dir(Some(override_dir)).unwrap();
+        let path = cache_path(&repo, &crabwatch_dir, sha);
         assert_eq!(
             path,
             PathBuf::from("/tmp/test-cache/repos/rust-lang/crabwatch").join(sha)

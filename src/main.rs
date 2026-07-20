@@ -14,7 +14,8 @@ struct Cli {
     #[arg(short, long, action = clap::ArgAction::Count, global = true)]
     verbose: u8,
 
-    /// Directory where downloaded workflows are cached
+    /// Directory where Crabwatch cache files are stored.
+    /// This includes repositories analyzed by crabwatch.
     #[arg(long, global = true)]
     cache_dir: Option<PathBuf>,
 
