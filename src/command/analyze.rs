@@ -68,7 +68,7 @@ pub async fn run(
             clone::clone_repo(&parsed.org, &parsed.repo, &path, &sha)?;
         }
 
-        scan::scan_workflows(&path)?;
+        scan::scan_workflows(&path, token)?;
     } else if org_arg.is_some() {
         bail!("--org is not yet supported");
     }
