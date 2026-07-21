@@ -1,9 +1,82 @@
 # Default zizmor configuration used by crabwatch.
 #
-# crabwatch ships this file and applies it when scanning repositories,
-# so every scan uses the same ruleset regardless of what zizmor config
-# a target repository has of its own.
-#
-# Individual audits can be tuned under `rules`. For now we run zizmor's
-# full default audit set.
-rules: {}
+# crabwatch runs a curated set of zizmor audits, and right now that set is
+# just `bot-conditions`. zizmor has no allow-list, so the only way to run one
+# audit is to disable every other one and leave the audit we want enabled.
+rules:
+  adhoc-packages:
+    disable: true
+  anonymous-definition:
+    disable: true
+  archived-uses:
+    disable: true
+  artipacked:
+    disable: true
+  cache-poisoning:
+    disable: true
+  concurrency-limits:
+    disable: true
+  dangerous-triggers:
+    disable: true
+  dependabot-cooldown:
+    disable: true
+  dependabot-execution:
+    disable: true
+  excessive-permissions:
+    disable: true
+  forbidden-uses:
+    disable: true
+  github-app:
+    disable: true
+  github-env:
+    disable: true
+  hardcoded-container-credentials:
+    disable: true
+  impostor-commit:
+    disable: true
+  insecure-commands:
+    disable: true
+  known-vulnerable-actions:
+    disable: true
+  misfeature:
+    disable: true
+  obfuscation:
+    disable: true
+  overprovisioned-secrets:
+    disable: true
+  ref-confusion:
+    disable: true
+  ref-version-mismatch:
+    disable: true
+  secrets-inherit:
+    disable: true
+  secrets-outside-env:
+    disable: true
+  self-hosted-runner:
+    disable: true
+  stale-action-refs:
+    disable: true
+  superfluous-actions:
+    disable: true
+  template-injection:
+    disable: true
+  typosquat-uses:
+    disable: true
+  undocumented-permissions:
+    disable: true
+  unpinned-images:
+    disable: true
+  unpinned-tools:
+    disable: true
+  unpinned-uses:
+    disable: true
+  unredacted-secrets:
+    disable: true
+  unsound-condition:
+    disable: true
+  unsound-contains:
+    disable: true
+  unsound-ternary:
+    disable: true
+  use-trusted-publishing:
+    disable: true
