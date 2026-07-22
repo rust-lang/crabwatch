@@ -22,7 +22,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Download crabwatch zizmor config
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/rust-lang/crabwatch/contents/zizmor-default.yml \
+            -H "Accept: application/vnd.github.raw+json" > zizmor-default.yml
+
       - name: Run zizmor
         uses: zizmorcore/zizmor-action@192e21d79ab29983730a13d1382995c2307fbcaa # v0.5.7
         with:
           advanced-security: false
+          config: zizmor-default.yml
