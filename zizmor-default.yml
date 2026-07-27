@@ -1,9 +1,15 @@
 # Default zizmor configuration used by crabwatch.
 #
-# crabwatch runs a curated set of zizmor audits, and right now that set is
-# just `bot-conditions`. zizmor has no allow-list, so the only way to run one
-# audit is to disable every other one and leave the audit we want enabled.
+# crabwatch runs a curated set of zizmor audits.
+# zizmor has no allow-list, so we need to explicitly disable every audit we don't want to run.
 rules:
+  # Enabled
+  bot-conditions:
+    disable: false
+  hardcoded-container-credentials:
+    disable: false
+
+  # Disabled
   adhoc-packages:
     disable: true
   anonymous-definition:
@@ -29,8 +35,6 @@ rules:
   github-app:
     disable: true
   github-env:
-    disable: true
-  hardcoded-container-credentials:
     disable: true
   impostor-commit:
     disable: true
