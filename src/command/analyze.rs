@@ -57,6 +57,43 @@ pub fn cache_path(repo: &ParsedRepo, crabwatch_dir: &Path, sha: &str) -> PathBuf
         .join(sha)
 }
 
+/// Removes everything except the cached clone for the current commit.
+fn prune_repo_cache(repo_cache_dir: &Path, keep_sha: &str) -> anyhow::Result<()> {
+    let directory = std::fs::read_dir(repo_cache_dir)
+        .with_context(|| format!("failed to read repository cache at {repo_cache_dir:?}",))?;
+
+    for entry in directory {
+        let entry = entry.with_context(|| {
+            format!("failed to read an entry in repository cache at {repo_cache_dir:?}",)
+        })?;
+        let file_type = entry.file_type().with_context(|| {
+            format!(
+                "failed to inspect repository cache entry at {}",
+                entry.path().display()
+            )
+        })?;
+
+        if file_type.is_dir() && entry.file_name() == keep_sha {
+            continue;
+        }
+
+        let path = entry.path();
+        let result = if file_type.is_dir() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+        result.with_context(|| {
+            format!(
+                "failed to remove repository cache entry at {}",
+                path.display()
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
 async fn analyze_repo(
     client: &reqwest::Client,
     parsed: &ParsedRepo,
@@ -70,16 +107,23 @@ async fn analyze_repo(
     writeln!(out, "HEAD commit: {sha}")?;
 
     let path = cache_path(parsed, crabwatch_dir, &sha);
+    let repo_cache_dir = path
+        .parent()
+        .context("repository cache path has no parent directory")?;
+    std::fs::create_dir_all(repo_cache_dir)
+        .context("failed to create repository cache directory")?;
+
+    // Old versions cannot satisfy this scan, so remove them before cloning to
+    // save disk space.
+    prune_repo_cache(repo_cache_dir, &sha)?;
 
     if path.exists() {
         writeln!(out, "cache hit: {}", path.display())?;
     } else {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).context("failed to create cache parent directory")?;
-        }
         writeln!(out, "cloning into: {}", path.display())?;
         clone::clone_repo(&parsed.org, &parsed.repo, &path, &sha).await?;
     }
+
     let scan_output = scan::scan_workflows(&path, zizmor_config, token).await?;
     writeln!(out, "{}", scan_output.trim_end())?;
 
@@ -211,5 +255,31 @@ mod tests {
             path,
             PathBuf::from("/tmp/test-cache/repos/rust-lang/crabwatch").join(sha)
         );
+    }
+
+    #[test]
+    fn keeps_only_the_current_version() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_cache_dir = temp_dir.path().join("rust-lang").join("crabwatch");
+        std::fs::create_dir_all(&repo_cache_dir).unwrap();
+
+        let current_sha = "1111111111111111111111111111111111111111";
+        let old_sha = "2222222222222222222222222222222222222222";
+        let stale_temp = format!("{}.tmp", "3333333333333333333333333333333333333333");
+        let unrelated_dir = "saved-by-user";
+        let unrelated_file = "notes.txt";
+
+        for entry in [current_sha, old_sha, &stale_temp, unrelated_dir] {
+            std::fs::create_dir(repo_cache_dir.join(entry)).unwrap();
+        }
+        std::fs::write(repo_cache_dir.join(unrelated_file), "not cache data").unwrap();
+
+        prune_repo_cache(&repo_cache_dir, current_sha).unwrap();
+
+        assert!(repo_cache_dir.join(current_sha).is_dir());
+        assert!(!repo_cache_dir.join(old_sha).exists());
+        assert!(!repo_cache_dir.join(stale_temp).exists());
+        assert!(!repo_cache_dir.join(unrelated_dir).exists());
+        assert!(!repo_cache_dir.join(unrelated_file).exists());
     }
 }
