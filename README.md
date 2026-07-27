@@ -22,6 +22,8 @@ This workflow runs on all the repositories that set `crabwatch = true` in the
 [`[custom-properties]`](https://github.com/rust-lang/team/blob/main/docs/toml-schema.md#repository-custom-properties)
 of the [`team`](https://github.com/rust-lang/team/tree/main/repos) toml file.
 
+Crabwatch keeps one shallow clone of each repository in its cache.
+
 ## Docs
 
 * [GitHub: required Workflows configured through org-wide rulesets](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets#require-workflows-to-pass-before-merging)
