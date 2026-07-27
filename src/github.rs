@@ -95,7 +95,10 @@ pub fn list_repos_query(org: &str, cursor: Option<&str>) -> String {
     let query = "query($org: String!, $cursor: String) { \
         organization(login: $org) { \
             repositories(first: 100, after: $cursor, isFork: false, isArchived: false) { \
-                nodes { name isEmpty } \
+                nodes { \
+                    name \
+                    workflows: object(expression: \"HEAD:.github/workflows\") { __typename } \
+                } \
                 pageInfo { hasNextPage endCursor } \
             } \
         } \
@@ -129,7 +132,7 @@ pub async fn list_org_repos(
         let repositories = connection
             .nodes
             .into_iter()
-            .filter_map(|node| (!node.is_empty).then_some(node.name));
+            .filter_map(|node| node.has_workflows_directory().then_some(node.name));
 
         repos.extend(repositories);
 
@@ -170,7 +173,21 @@ struct RepositoryConnection {
 #[serde(rename_all = "camelCase")]
 struct RepoNode {
     name: String,
-    is_empty: bool,
+    workflows: Option<GitObject>,
+}
+
+impl RepoNode {
+    fn has_workflows_directory(&self) -> bool {
+        self.workflows
+            .as_ref()
+            .is_some_and(|object| object.type_name == "Tree")
+    }
+}
+
+#[derive(Deserialize)]
+struct GitObject {
+    #[serde(rename = "__typename")]
+    type_name: String,
 }
 
 #[derive(Deserialize)]
@@ -191,7 +208,41 @@ mod tests {
 
     #[test]
     fn list_repos_query_snapshot() {
-        insta::assert_snapshot!(list_repos_query("rust-lang", Some("cursor")), @r#"{"query":"query($org: String!, $cursor: String) { organization(login: $org) { repositories(first: 100, after: $cursor, isFork: false, isArchived: false) { nodes { name isEmpty } pageInfo { hasNextPage endCursor } } } }","variables":{"cursor":"cursor","org":"rust-lang"}}"#);
+        insta::assert_snapshot!(list_repos_query("rust-lang", Some("cursor")), @r#"{"query":"query($org: String!, $cursor: String) { organization(login: $org) { repositories(first: 100, after: $cursor, isFork: false, isArchived: false) { nodes { name workflows: object(expression: \"HEAD:.github/workflows\") { __typename } } pageInfo { hasNextPage endCursor } } } }","variables":{"cursor":"cursor","org":"rust-lang"}}"#);
+    }
+
+    #[test]
+    fn identifies_repository_with_workflows_directory() {
+        let json = r#"{
+            "name": "crabwatch",
+            "workflows": {
+                "__typename": "Tree"
+            }
+        }"#;
+        let node: RepoNode = serde_json::from_str(json).unwrap();
+        assert!(node.has_workflows_directory());
+    }
+
+    #[test]
+    fn rejects_repository_without_workflows_directory() {
+        let json = r#"{
+            "name": "no-workflows",
+            "workflows": null
+        }"#;
+        let node: RepoNode = serde_json::from_str(json).unwrap();
+        assert!(!node.has_workflows_directory());
+    }
+
+    #[test]
+    fn rejects_non_directory_at_workflows_path() {
+        let json = r#"{
+            "name": "workflows-is-a-file",
+            "workflows": {
+                "__typename": "Blob"
+            }
+        }"#;
+        let node: RepoNode = serde_json::from_str(json).unwrap();
+        assert!(!node.has_workflows_directory());
     }
 
     #[test]

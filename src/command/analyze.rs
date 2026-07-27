@@ -149,7 +149,7 @@ pub async fn run(
     } else if let Some(org) = org_arg {
         let repos = github::list_org_repos(&client, &org, token).await?;
         let total_repos = repos.len();
-        println!("found {total_repos} repos in {org}");
+        println!("found {total_repos} repos with workflows in {org}");
 
         let client = &client;
         let crabwatch_dir = &crabwatch_dir;
