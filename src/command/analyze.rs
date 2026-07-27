@@ -1,7 +1,10 @@
 use crate::{clone, github, scan};
-use anyhow::{Context as _, bail};
-
+use anyhow::{Context as _, anyhow, bail};
+use futures::stream::StreamExt;
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
+
+const MAX_CONCURRENT_REPOS: usize = 8;
 
 #[derive(Debug, PartialEq)]
 pub struct ParsedRepo {
@@ -29,6 +32,23 @@ fn crabwatch_dir(cache_dir_override: Option<&Path>) -> anyhow::Result<PathBuf> {
     }
 }
 
+fn incomplete_org_scan_error(
+    org: &str,
+    total_repos: usize,
+    failures: &[(ParsedRepo, String)],
+) -> anyhow::Error {
+    let details = failures
+        .iter()
+        .map(|(repo, error)| format!("  {}/{}: {error}", repo.org, repo.repo))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    anyhow!(
+        "organization scan for {org} incomplete: {} of {total_repos} repositories failed:\n{details}",
+        failures.len()
+    )
+}
+
 pub fn cache_path(repo: &ParsedRepo, crabwatch_dir: &Path, sha: &str) -> PathBuf {
     crabwatch_dir
         .join("repos")
@@ -37,41 +57,94 @@ pub fn cache_path(repo: &ParsedRepo, crabwatch_dir: &Path, sha: &str) -> PathBuf
         .join(sha)
 }
 
+async fn analyze_repo(
+    client: &reqwest::Client,
+    parsed: &ParsedRepo,
+    crabwatch_dir: &Path,
+    zizmor_config: &Path,
+    token: &str,
+) -> anyhow::Result<String> {
+    let mut out = String::new();
+
+    let sha = github::fetch_head_commit(client, &parsed.org, &parsed.repo, token).await?;
+    writeln!(out, "HEAD commit: {sha}")?;
+
+    let path = cache_path(parsed, crabwatch_dir, &sha);
+
+    if path.exists() {
+        writeln!(out, "cache hit: {}", path.display())?;
+    } else {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).context("failed to create cache parent directory")?;
+        }
+        writeln!(out, "cloning into: {}", path.display())?;
+        clone::clone_repo(&parsed.org, &parsed.repo, &path, &sha).await?;
+    }
+    let scan_output = scan::scan_workflows(&path, zizmor_config, token).await?;
+    writeln!(out, "{}", scan_output.trim_end())?;
+
+    Ok(out)
+}
+
 pub async fn run(
     repo_arg: Option<String>,
     org_arg: Option<String>,
     cache_dir_override: Option<&Path>,
     token: Option<&str>,
 ) -> anyhow::Result<()> {
+    let token =
+        token.context("a GitHub token is required (--github-token or GITHUB_TOKEN env var)")?;
+    let client = reqwest::Client::new();
+    let crabwatch_dir = crabwatch_dir(cache_dir_override)?;
+    let zizmor_config = scan::sync_zizmor_config(&crabwatch_dir)?;
+
     if let Some(repo_arg) = repo_arg {
         let parsed = parse_repo(&repo_arg)?;
+        let output = analyze_repo(&client, &parsed, &crabwatch_dir, &zizmor_config, token).await?;
+        print!("{output}");
+    } else if let Some(org) = org_arg {
+        let repos = github::list_org_repos(&client, &org, token).await?;
+        let total_repos = repos.len();
+        println!("found {total_repos} repos in {org}");
 
-        let token =
-            token.context("a GitHub token is required (--github-token or GITHUB_TOKEN env var)")?;
+        let client = &client;
+        let crabwatch_dir = &crabwatch_dir;
+        let zizmor_config = &zizmor_config;
+        let org = &org;
+        let mut failures = Vec::new();
 
-        let client = reqwest::Client::new();
-        let sha = github::fetch_head_commit(&client, &parsed.org, &parsed.repo, token).await?;
+        let mut stream = futures::stream::iter(repos)
+            .map(|repo| {
+                let parsed = ParsedRepo {
+                    org: org.clone(),
+                    repo,
+                };
+                async move {
+                    let result =
+                        analyze_repo(client, &parsed, crabwatch_dir, zizmor_config, token).await;
+                    (parsed, result)
+                }
+            })
+            .buffer_unordered(MAX_CONCURRENT_REPOS);
 
-        println!("HEAD commit: {sha}");
-
-        let crabwatch_dir = crabwatch_dir(cache_dir_override)?;
-        let path = cache_path(&parsed, &crabwatch_dir, &sha);
-
-        if path.exists() {
-            println!("cache hit: {}", path.display());
-        } else {
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)
-                    .context("failed to create cache parent directory")?;
+        while let Some((parsed, result)) = stream.next().await {
+            println!("\n=== {}/{} ===", parsed.org, parsed.repo);
+            match result {
+                Ok(output) => print!("{output}"),
+                Err(err) => {
+                    let error = format!("{err:#}");
+                    eprintln!("failed to scan {}/{}: {error}", parsed.org, parsed.repo);
+                    failures.push((parsed, error));
+                }
             }
-            println!("cloning into: {}", path.display());
-            clone::clone_repo(&parsed.org, &parsed.repo, &path, &sha)?;
         }
 
-        scan::scan_workflows(&path, &crabwatch_dir, token)?;
-    } else if org_arg.is_some() {
-        bail!("--org is not yet supported");
+        if !failures.is_empty() {
+            failures.sort_by(|(left, _), (right, _)| left.repo.cmp(&right.repo));
+            return Err(incomplete_org_scan_error(org, total_repos, &failures));
+        }
     }
+
     Ok(())
 }
 

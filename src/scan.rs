@@ -1,7 +1,7 @@
 use anyhow::{Context as _, bail};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use tokio::process::Command;
 
 const ZIZMOR_CONFIG: &str = include_str!("../zizmor-default.yml");
 const ZIZMOR_CONFIG_FILE: &str = "zizmor-default.yml";
@@ -12,12 +12,14 @@ fn zizmor_command(repo_path: &Path, config_path: &Path, github_token: &str) -> C
         .env("ZIZMOR_GITHUB_TOKEN", github_token)
         .arg("--config")
         .arg(config_path)
+        // Fail on GitHub workflow syntax error.
+        .arg("--strict-collection")
         .arg("--no-exit-codes")
         .arg(repo_path);
     command
 }
 
-fn sync_zizmor_config(crabwatch_dir: &Path) -> anyhow::Result<PathBuf> {
+pub(crate) fn sync_zizmor_config(crabwatch_dir: &Path) -> anyhow::Result<PathBuf> {
     let config_path = crabwatch_dir.join(ZIZMOR_CONFIG_FILE);
 
     match std::fs::read(&config_path) {
@@ -41,28 +43,43 @@ fn sync_zizmor_config(crabwatch_dir: &Path) -> anyhow::Result<PathBuf> {
     Ok(config_path)
 }
 
-pub fn scan_workflows(
+pub async fn scan_workflows(
     repo_path: &Path,
-    crabwatch_dir: &Path,
+    config_path: &Path,
     github_token: &str,
-) -> anyhow::Result<()> {
-    let config_path = sync_zizmor_config(crabwatch_dir)?;
+) -> anyhow::Result<String> {
+    let output = zizmor_command(repo_path, config_path, github_token)
+        .output()
+        .await;
 
-    let status = zizmor_command(repo_path, &config_path, github_token).status();
-
-    let status = match status {
-        Ok(status) => status,
+    let output = match output {
+        Ok(output) => output,
         Err(err) if err.kind() == ErrorKind::NotFound => {
             bail!("zizmor is not installed; see https://docs.zizmor.sh/installation/");
         }
         Err(err) => return Err(err).context("failed to run zizmor"),
     };
 
-    if !status.success() {
-        bail!("zizmor failed ({status})");
+    // Exit code 3 means zizmor found no auditable inputs.
+    // Since zizmor runs with `--strict-collection`, this means there were no workflows to scan.
+    // If you omit `--strict-collection`, an exit code 3 might mean that some workflows are invalid.
+    if output.status.code() == Some(3) {
+        return Ok("no workflows to scan".to_string());
     }
 
-    Ok(())
+    if !output.status.success() {
+        bail!(
+            "zizmor failed ({})\nstdout:\n{}\nstderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+
+    let mut combined = String::new();
+    combined.push_str(&String::from_utf8_lossy(&output.stderr));
+    combined.push_str(&String::from_utf8_lossy(&output.stdout));
+    Ok(combined)
 }
 
 #[cfg(test)]

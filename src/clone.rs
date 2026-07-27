@@ -1,8 +1,9 @@
-use anyhow::{Context as _, bail};
+use anyhow::{Context as _, anyhow, bail};
+use std::fmt::{Display, Write as _};
 use std::path::Path;
-use std::process::Command;
+use tokio::process::Command;
 
-pub fn clone_repo(
+pub async fn clone_repo(
     org: &str,
     repo: &str,
     final_dest: &Path,
@@ -25,20 +26,22 @@ pub fn clone_repo(
         .arg(&url)
         .arg(&temp_dest)
         .output()
+        .await
         .context("failed to run git clone")?;
 
     if !output.status.success() {
-        if !output.stdout.is_empty() {
-            eprintln!("{}", String::from_utf8_lossy(&output.stdout));
-        }
-        if !output.stderr.is_empty() {
-            eprintln!("{}", String::from_utf8_lossy(&output.stderr));
-        }
         let _ = std::fs::remove_dir_all(&temp_dest);
-        bail!("git clone failed for {org}/{repo} ({})", output.status);
+        return Err(clone_failure(
+            org,
+            repo,
+            output.status,
+            &output.stdout,
+            &output.stderr,
+        ));
     }
 
-    let actual_sha = head_sha(&temp_dest)?;
+    let actual_sha = head_sha(&temp_dest).await?;
+
     if actual_sha != expected_sha {
         let _ = std::fs::remove_dir_all(&temp_dest);
         bail!(
@@ -53,7 +56,7 @@ pub fn clone_repo(
     Ok(())
 }
 
-fn head_sha(repo_path: &Path) -> anyhow::Result<String> {
+async fn head_sha(repo_path: &Path) -> anyhow::Result<String> {
     let output = Command::new("git")
         .arg("-C")
         .arg(repo_path)
@@ -61,6 +64,7 @@ fn head_sha(repo_path: &Path) -> anyhow::Result<String> {
         .arg("--verify")
         .arg("HEAD^{commit}")
         .output()
+        .await
         .context("failed to run git rev-parse")?;
 
     if !output.status.success() {
@@ -73,4 +77,26 @@ fn head_sha(repo_path: &Path) -> anyhow::Result<String> {
         .to_string();
 
     Ok(sha)
+}
+
+fn clone_failure(
+    org: &str,
+    repo: &str,
+    status: impl Display,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> anyhow::Error {
+    let mut message = format!("git clone failed for {org}/{repo} ({status})");
+    append_diagnostic(&mut message, "stdout", stdout);
+    append_diagnostic(&mut message, "stderr", stderr);
+    anyhow!(message)
+}
+
+fn append_diagnostic(message: &mut String, label: &str, output: &[u8]) {
+    if output.is_empty() {
+        return;
+    }
+
+    let output = String::from_utf8_lossy(output);
+    write!(message, "\n{label}:\n{}", output.trim()).expect("writing to a String cannot fail");
 }

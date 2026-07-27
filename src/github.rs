@@ -15,8 +15,20 @@ pub async fn fetch_head_commit(
     token: &str,
 ) -> anyhow::Result<String> {
     let body = head_commit_query(org, repo);
+    let response: GraphQlResponse = post_graphql(client, token, body).await?;
+    check_graphql_errors(&response.errors)?;
 
-    let response: GraphQlResponse = client
+    response
+        .head_commit_sha()
+        .ok_or_else(|| anyhow!("repository {org}/{repo} not found or has no default branch"))
+}
+
+async fn post_graphql<T: serde::de::DeserializeOwned>(
+    client: &reqwest::Client,
+    token: &str,
+    body: String,
+) -> anyhow::Result<T> {
+    let response = client
         .post("https://api.github.com/graphql")
         .header("Authorization", format!("Bearer {token}"))
         .header("User-Agent", "crabwatch")
@@ -30,17 +42,17 @@ pub async fn fetch_head_commit(
         .json()
         .await
         .context("failed to parse GraphQL response from GitHub")?;
+    Ok(response)
+}
 
-    if let Some(errors) = &response.errors {
+fn check_graphql_errors(errors: &Option<Vec<serde_json::Value>>) -> anyhow::Result<()> {
+    if let Some(errors) = errors {
         bail!(
             "GitHub GraphQL API returned errors: {}",
             serde_json::to_string(errors).unwrap_or_default()
         );
     }
-
-    response
-        .head_commit_sha()
-        .ok_or_else(|| anyhow!("repository {org}/{repo} not found or has no default branch"))
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -79,6 +91,95 @@ struct Target {
     oid: String,
 }
 
+pub fn list_repos_query(org: &str, cursor: Option<&str>) -> String {
+    let query = "query($org: String!, $cursor: String) { \
+        organization(login: $org) { \
+            repositories(first: 100, after: $cursor, isFork: false, isArchived: false) { \
+                nodes { name isEmpty } \
+                pageInfo { hasNextPage endCursor } \
+            } \
+        } \
+    }";
+    serde_json::json!({
+        "query": query,
+        "variables": { "org": org, "cursor": cursor }
+    })
+    .to_string()
+}
+
+pub async fn list_org_repos(
+    client: &reqwest::Client,
+    org: &str,
+    token: &str,
+) -> anyhow::Result<Vec<String>> {
+    let mut repos = Vec::new();
+    let mut cursor: Option<String> = None;
+
+    loop {
+        let body = list_repos_query(org, cursor.as_deref());
+        let response: OrgReposResponse = post_graphql(client, token, body).await?;
+        check_graphql_errors(&response.errors)?;
+
+        let connection = response
+            .data
+            .and_then(|d| d.organization)
+            .map(|o| o.repositories)
+            .ok_or_else(|| anyhow!("organization {org} not found"))?;
+
+        let repositories = connection
+            .nodes
+            .into_iter()
+            .filter_map(|node| (!node.is_empty).then_some(node.name));
+
+        repos.extend(repositories);
+
+        if connection.page_info.has_next_page {
+            cursor = connection.page_info.end_cursor;
+        } else {
+            break;
+        }
+    }
+
+    Ok(repos)
+}
+
+#[derive(Deserialize)]
+struct OrgReposResponse {
+    data: Option<OrgReposData>,
+    errors: Option<Vec<serde_json::Value>>,
+}
+
+#[derive(Deserialize)]
+struct OrgReposData {
+    organization: Option<OrgRepositories>,
+}
+
+#[derive(Deserialize)]
+struct OrgRepositories {
+    repositories: RepositoryConnection,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RepositoryConnection {
+    nodes: Vec<RepoNode>,
+    page_info: PageInfo,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RepoNode {
+    name: String,
+    is_empty: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PageInfo {
+    has_next_page: bool,
+    end_cursor: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,6 +187,11 @@ mod tests {
     #[test]
     fn head_commit_query_snapshot() {
         insta::assert_snapshot!(head_commit_query("rust-lang", "crabwatch"), @r#"{"query":"query { repository(owner: \"rust-lang\", name: \"crabwatch\") { defaultBranchRef { target { oid } } } }"}"#);
+    }
+
+    #[test]
+    fn list_repos_query_snapshot() {
+        insta::assert_snapshot!(list_repos_query("rust-lang", Some("cursor")), @r#"{"query":"query($org: String!, $cursor: String) { organization(login: $org) { repositories(first: 100, after: $cursor, isFork: false, isArchived: false) { nodes { name isEmpty } pageInfo { hasNextPage endCursor } } } }","variables":{"cursor":"cursor","org":"rust-lang"}}"#);
     }
 
     #[test]
