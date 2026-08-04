@@ -6,6 +6,16 @@ use std::path::{Path, PathBuf};
 
 const MAX_CONCURRENT_REPOS: usize = 8;
 
+#[derive(Clone, Copy, Debug, PartialEq, clap::ValueEnum)]
+pub enum LogLevel {
+    Info,
+    Debug,
+}
+
+fn should_display(log_level: LogLevel, outcome: &scan::ScanOutcome) -> bool {
+    log_level == LogLevel::Debug || *outcome == scan::ScanOutcome::Findings
+}
+
 #[derive(Debug, PartialEq)]
 pub struct ParsedRepo {
     pub org: String,
@@ -100,7 +110,7 @@ async fn analyze_repo(
     crabwatch_dir: &Path,
     zizmor_config: &Path,
     token: &str,
-) -> anyhow::Result<String> {
+) -> anyhow::Result<(String, scan::ScanOutcome)> {
     let mut out = String::new();
 
     let sha = github::fetch_head_commit(client, &parsed.org, &parsed.repo, token).await?;
@@ -124,15 +134,16 @@ async fn analyze_repo(
         clone::clone_repo(&parsed.org, &parsed.repo, &path, &sha).await?;
     }
 
-    let scan_output = scan::scan_workflows(&path, zizmor_config, token).await?;
-    writeln!(out, "{}", scan_output.trim_end())?;
+    let report = scan::scan_workflows(&path, zizmor_config, token).await?;
+    writeln!(out, "{}", report.output.trim_end())?;
 
-    Ok(out)
+    Ok((out, report.outcome))
 }
 
 pub async fn run(
     repo_arg: Option<String>,
     org_arg: Option<String>,
+    log_level: LogLevel,
     cache_dir_override: Option<&Path>,
     token: Option<&str>,
 ) -> anyhow::Result<()> {
@@ -144,7 +155,9 @@ pub async fn run(
 
     if let Some(repo_arg) = repo_arg {
         let parsed = parse_repo(&repo_arg)?;
-        let output = analyze_repo(&client, &parsed, &crabwatch_dir, &zizmor_config, token).await?;
+        let (output, _) =
+            analyze_repo(&client, &parsed, &crabwatch_dir, &zizmor_config, token).await?;
+
         print!("{output}");
     } else if let Some(org) = org_arg {
         let repos = github::list_org_repos(&client, &org, token).await?;
@@ -172,9 +185,18 @@ pub async fn run(
             .buffer_unordered(MAX_CONCURRENT_REPOS);
 
         while let Some((parsed, result)) = stream.next().await {
+            // Successful scans print at DEBUG, or when they have findings; errors always print.
+            let show = match &result {
+                Ok((_, outcome)) => should_display(log_level, outcome),
+                Err(_) => true,
+            };
+            if !show {
+                continue;
+            }
+
             println!("\n=== {}/{} ===", parsed.org, parsed.repo);
             match result {
-                Ok(output) => print!("{output}"),
+                Ok((output, _)) => print!("{output}"),
                 Err(err) => {
                     let error = format!("{err:#}");
                     eprintln!("failed to scan {}/{}: {error}", parsed.org, parsed.repo);
@@ -200,6 +222,29 @@ mod tests {
             org: "rust-lang".to_string(),
             repo: "crabwatch".to_string(),
         }
+    }
+
+    #[test]
+    fn debug_shows_every_outcome() {
+        assert!(should_display(LogLevel::Debug, &scan::ScanOutcome::Clean));
+        assert!(should_display(
+            LogLevel::Debug,
+            &scan::ScanOutcome::Findings
+        ));
+        assert!(should_display(
+            LogLevel::Debug,
+            &scan::ScanOutcome::NoWorkflows
+        ));
+    }
+
+    #[test]
+    fn info_shows_only_findings() {
+        assert!(should_display(LogLevel::Info, &scan::ScanOutcome::Findings));
+        assert!(!should_display(LogLevel::Info, &scan::ScanOutcome::Clean));
+        assert!(!should_display(
+            LogLevel::Info,
+            &scan::ScanOutcome::NoWorkflows
+        ));
     }
 
     #[test]

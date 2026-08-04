@@ -5,6 +5,17 @@ use tokio::process::Command;
 
 const ZIZMOR_CONFIG: &str = include_str!("../zizmor-default.yml");
 const ZIZMOR_CONFIG_FILE: &str = "zizmor-default.yml";
+#[derive(Debug, PartialEq)]
+pub enum ScanOutcome {
+    Clean,
+    Findings,
+    NoWorkflows,
+}
+
+pub struct ScanReport {
+    pub output: String,
+    pub outcome: ScanOutcome,
+}
 
 fn zizmor_command(repo_path: &Path, config_path: &Path, github_token: &str) -> Command {
     let mut command = Command::new("zizmor");
@@ -14,7 +25,6 @@ fn zizmor_command(repo_path: &Path, config_path: &Path, github_token: &str) -> C
         .arg(config_path)
         // Fail on GitHub workflow syntax error.
         .arg("--strict-collection")
-        .arg("--no-exit-codes")
         .arg(repo_path);
     command
 }
@@ -47,7 +57,7 @@ pub async fn scan_workflows(
     repo_path: &Path,
     config_path: &Path,
     github_token: &str,
-) -> anyhow::Result<String> {
+) -> anyhow::Result<ScanReport> {
     let output = zizmor_command(repo_path, config_path, github_token)
         .output()
         .await;
@@ -59,27 +69,33 @@ pub async fn scan_workflows(
         }
         Err(err) => return Err(err).context("failed to run zizmor"),
     };
+    let mut combined = String::new();
+    combined.push_str(&String::from_utf8_lossy(&output.stderr));
+    combined.push_str(&String::from_utf8_lossy(&output.stdout));
 
-    // Exit code 3 means zizmor found no auditable inputs.
-    // Since zizmor runs with `--strict-collection`, this means there were no workflows to scan.
-    // If you omit `--strict-collection`, an exit code 3 might mean that some workflows are invalid.
-    if output.status.code() == Some(3) {
-        return Ok("no workflows to scan".to_string());
-    }
-
-    if !output.status.success() {
-        bail!(
+    match output.status.code() {
+        Some(0) => Ok(ScanReport {
+            output: combined,
+            outcome: ScanOutcome::Clean,
+        }),
+        // Exit code 3 means no auditable inputs. With `--strict-collection`, that means
+        // there were no workflows to scan (invalid workflows fail with a different code).
+        Some(3) => Ok(ScanReport {
+            output: "no workflows to scan".to_string(),
+            outcome: ScanOutcome::NoWorkflows,
+        }),
+        // Exit codes 11-14 mean zizmor reported findings; the number is the top severity.
+        Some(11..=14) => Ok(ScanReport {
+            output: combined,
+            outcome: ScanOutcome::Findings,
+        }),
+        _ => bail!(
             "zizmor failed ({})\nstdout:\n{}\nstderr:\n{}",
             output.status,
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr),
-        );
+        ),
     }
-
-    let mut combined = String::new();
-    combined.push_str(&String::from_utf8_lossy(&output.stderr));
-    combined.push_str(&String::from_utf8_lossy(&output.stdout));
-    Ok(combined)
 }
 
 #[cfg(test)]

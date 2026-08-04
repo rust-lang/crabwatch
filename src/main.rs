@@ -23,6 +23,16 @@ struct Cli {
     #[arg(long, env = "GITHUB_TOKEN", hide_env_values = true, global = true)]
     github_token: Option<String>,
 
+    /// Output detail: `info` shows only repos with findings, `debug` shows all.
+    #[arg(
+        long,
+        env = "LOG_LEVEL",
+        default_value = "info",
+        ignore_case = true,
+        global = true
+    )]
+    log_level: command::analyze::LogLevel,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -58,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
             command::analyze::run(
                 repo,
                 org,
+                cli.log_level,
                 cli.cache_dir.as_deref(),
                 cli.github_token.as_deref(),
             )
