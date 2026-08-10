@@ -59,6 +59,15 @@ enum Command {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    env_logger::Builder::new()
+        .filter_level(log::LevelFilter::Off)
+        .filter_module("crabwatch", cli.log_level.filter())
+        .format(|buf, record| {
+            use std::io::Write;
+            writeln!(buf, "{}", record.args())
+        })
+        .init();
+
     match cli.command {
         Command::Analyze {
             repo,
@@ -68,7 +77,6 @@ async fn main() -> anyhow::Result<()> {
             command::analyze::run(
                 repo,
                 org,
-                cli.log_level,
                 cli.cache_dir.as_deref(),
                 cli.github_token.as_deref(),
             )

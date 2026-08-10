@@ -12,8 +12,20 @@ pub enum LogLevel {
     Debug,
 }
 
-fn should_display(log_level: LogLevel, outcome: &scan::ScanOutcome) -> bool {
-    log_level == LogLevel::Debug || *outcome == scan::ScanOutcome::Findings
+impl LogLevel {
+    pub fn filter(self) -> log::LevelFilter {
+        match self {
+            LogLevel::Info => log::LevelFilter::Info,
+            LogLevel::Debug => log::LevelFilter::Debug,
+        }
+    }
+}
+
+fn level_for(outcome: &scan::ScanOutcome) -> log::Level {
+    match outcome {
+        scan::ScanOutcome::Findings => log::Level::Info,
+        scan::ScanOutcome::Clean | scan::ScanOutcome::NoWorkflows => log::Level::Debug,
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -143,7 +155,6 @@ async fn analyze_repo(
 pub async fn run(
     repo_arg: Option<String>,
     org_arg: Option<String>,
-    log_level: LogLevel,
     cache_dir_override: Option<&Path>,
     token: Option<&str>,
 ) -> anyhow::Result<()> {
@@ -155,14 +166,13 @@ pub async fn run(
 
     if let Some(repo_arg) = repo_arg {
         let parsed = parse_repo(&repo_arg)?;
-        let (output, _) =
+        let (output, outcome) =
             analyze_repo(&client, &parsed, &crabwatch_dir, &zizmor_config, token).await?;
-
-        print!("{output}");
+        log::log!(level_for(&outcome), "{output}");
     } else if let Some(org) = org_arg {
         let repos = github::list_org_repos(&client, &org, token).await?;
         let total_repos = repos.len();
-        println!("found {total_repos} repos with workflows in {org}");
+        log::debug!("found {total_repos} repos with workflows in {org}");
 
         let client = &client;
         let crabwatch_dir = &crabwatch_dir;
@@ -185,21 +195,18 @@ pub async fn run(
             .buffer_unordered(MAX_CONCURRENT_REPOS);
 
         while let Some((parsed, result)) = stream.next().await {
-            // Successful scans print at DEBUG, or when they have findings; errors always print.
-            let show = match &result {
-                Ok((_, outcome)) => should_display(log_level, outcome),
-                Err(_) => true,
-            };
-            if !show {
-                continue;
-            }
-
-            println!("\n=== {}/{} ===", parsed.org, parsed.repo);
             match result {
-                Ok((output, _)) => print!("{output}"),
+                Ok((output, outcome)) => {
+                    log::log!(
+                        level_for(&outcome),
+                        "=== {}/{} ===\n{output}",
+                        parsed.org,
+                        parsed.repo
+                    );
+                }
                 Err(err) => {
                     let error = format!("{err:#}");
-                    eprintln!("failed to scan {}/{}: {error}", parsed.org, parsed.repo);
+                    log::error!("failed to scan {}/{}: {error}", parsed.org, parsed.repo);
                     failures.push((parsed, error));
                 }
             }
@@ -225,26 +232,17 @@ mod tests {
     }
 
     #[test]
-    fn debug_shows_every_outcome() {
-        assert!(should_display(LogLevel::Debug, &scan::ScanOutcome::Clean));
-        assert!(should_display(
-            LogLevel::Debug,
-            &scan::ScanOutcome::Findings
-        ));
-        assert!(should_display(
-            LogLevel::Debug,
-            &scan::ScanOutcome::NoWorkflows
-        ));
+    fn findings_log_at_info() {
+        assert_eq!(level_for(&scan::ScanOutcome::Findings), log::Level::Info);
     }
 
     #[test]
-    fn info_shows_only_findings() {
-        assert!(should_display(LogLevel::Info, &scan::ScanOutcome::Findings));
-        assert!(!should_display(LogLevel::Info, &scan::ScanOutcome::Clean));
-        assert!(!should_display(
-            LogLevel::Info,
-            &scan::ScanOutcome::NoWorkflows
-        ));
+    fn clean_and_no_workflows_log_at_debug() {
+        assert_eq!(level_for(&scan::ScanOutcome::Clean), log::Level::Debug);
+        assert_eq!(
+            level_for(&scan::ScanOutcome::NoWorkflows),
+            log::Level::Debug
+        );
     }
 
     #[test]
