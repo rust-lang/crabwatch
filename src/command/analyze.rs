@@ -1,10 +1,16 @@
 use crate::{clone, github, scan};
 use anyhow::{Context as _, anyhow, bail};
 use futures::stream::StreamExt;
-use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 const MAX_CONCURRENT_REPOS: usize = 8;
+
+fn level_for(outcome: &scan::ScanOutcome) -> log::Level {
+    match outcome {
+        scan::ScanOutcome::Findings => log::Level::Info,
+        scan::ScanOutcome::Clean | scan::ScanOutcome::NoWorkflows => log::Level::Debug,
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct ParsedRepo {
@@ -100,12 +106,9 @@ async fn analyze_repo(
     crabwatch_dir: &Path,
     zizmor_config: &Path,
     token: &str,
-) -> anyhow::Result<String> {
-    let mut out = String::new();
-
+) -> anyhow::Result<(String, scan::ScanOutcome)> {
     let sha = github::fetch_head_commit(client, &parsed.org, &parsed.repo, token).await?;
-    writeln!(out, "HEAD commit: {sha}")?;
-
+    log::debug!("HEAD commit: {sha}");
     let path = cache_path(parsed, crabwatch_dir, &sha);
     let repo_cache_dir = path
         .parent()
@@ -118,16 +121,16 @@ async fn analyze_repo(
     prune_repo_cache(repo_cache_dir, &sha)?;
 
     if path.exists() {
-        writeln!(out, "cache hit: {}", path.display())?;
+        log::debug!("cache hit: {}", path.display());
     } else {
-        writeln!(out, "cloning into: {}", path.display())?;
+        log::debug!("cloning into: {}", path.display());
+
         clone::clone_repo(&parsed.org, &parsed.repo, &path, &sha).await?;
     }
 
-    let scan_output = scan::scan_workflows(&path, zizmor_config, token).await?;
-    writeln!(out, "{}", scan_output.trim_end())?;
+    let report = scan::scan_workflows(&path, zizmor_config, token).await?;
 
-    Ok(out)
+    Ok((report.output.trim_end().to_string(), report.outcome))
 }
 
 pub async fn run(
@@ -144,12 +147,13 @@ pub async fn run(
 
     if let Some(repo_arg) = repo_arg {
         let parsed = parse_repo(&repo_arg)?;
-        let output = analyze_repo(&client, &parsed, &crabwatch_dir, &zizmor_config, token).await?;
-        print!("{output}");
+        let (output, outcome) =
+            analyze_repo(&client, &parsed, &crabwatch_dir, &zizmor_config, token).await?;
+        log::log!(level_for(&outcome), "{output}");
     } else if let Some(org) = org_arg {
         let repos = github::list_org_repos(&client, &org, token).await?;
         let total_repos = repos.len();
-        println!("found {total_repos} repos with workflows in {org}");
+        log::debug!("found {total_repos} repos with workflows in {org}");
 
         let client = &client;
         let crabwatch_dir = &crabwatch_dir;
@@ -172,12 +176,18 @@ pub async fn run(
             .buffer_unordered(MAX_CONCURRENT_REPOS);
 
         while let Some((parsed, result)) = stream.next().await {
-            println!("\n=== {}/{} ===", parsed.org, parsed.repo);
             match result {
-                Ok(output) => print!("{output}"),
+                Ok((output, outcome)) => {
+                    log::log!(
+                        level_for(&outcome),
+                        "=== {}/{} ===\n{output}",
+                        parsed.org,
+                        parsed.repo
+                    );
+                }
                 Err(err) => {
                     let error = format!("{err:#}");
-                    eprintln!("failed to scan {}/{}: {error}", parsed.org, parsed.repo);
+                    log::error!("failed to scan {}/{}: {error}", parsed.org, parsed.repo);
                     failures.push((parsed, error));
                 }
             }
@@ -200,6 +210,20 @@ mod tests {
             org: "rust-lang".to_string(),
             repo: "crabwatch".to_string(),
         }
+    }
+
+    #[test]
+    fn findings_log_at_info() {
+        assert_eq!(level_for(&scan::ScanOutcome::Findings), log::Level::Info);
+    }
+
+    #[test]
+    fn clean_and_no_workflows_log_at_debug() {
+        assert_eq!(level_for(&scan::ScanOutcome::Clean), log::Level::Debug);
+        assert_eq!(
+            level_for(&scan::ScanOutcome::NoWorkflows),
+            log::Level::Debug
+        );
     }
 
     #[test]
