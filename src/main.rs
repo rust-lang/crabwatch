@@ -1,4 +1,6 @@
+use anyhow::{Context, bail};
 use clap::{ArgGroup, Parser, Subcommand};
+use log::LevelFilter;
 use std::path::PathBuf;
 
 mod clone;
@@ -10,10 +12,6 @@ mod scan;
 #[derive(Parser)]
 #[command(name = "crabwatch", version, about, long_about = None)]
 struct Cli {
-    /// Increase logging verbosity
-    #[arg(short, long, action = clap::ArgAction::Count, global = true)]
-    verbose: u8,
-
     /// Directory where Crabwatch cache files are stored.
     /// This includes repositories analyzed by crabwatch.
     #[arg(long, global = true)]
@@ -22,16 +20,6 @@ struct Cli {
     /// GitHub token
     #[arg(long, env = "GITHUB_TOKEN", hide_env_values = true, global = true)]
     github_token: Option<String>,
-
-    /// Output detail: `info` shows only repos with findings, `debug` shows all.
-    #[arg(
-        long,
-        env = "LOG_LEVEL",
-        default_value = "info",
-        ignore_case = true,
-        global = true
-    )]
-    log_level: command::analyze::LogLevel,
 
     #[command(subcommand)]
     command: Command,
@@ -56,17 +44,36 @@ enum Command {
     },
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+const LOG_ENV: &str = "CRABWATCH_LOG";
+
+fn init_logging() -> anyhow::Result<()> {
+    let raw_level = std::env::var(LOG_ENV).unwrap_or_else(|_| "info".to_owned());
+
+    let level = raw_level
+        .parse::<LevelFilter>()
+        .with_context(|| format!("invalid {LOG_ENV} value `{raw_level}`"))?;
+
+    if !matches!(level, LevelFilter::Info | LevelFilter::Debug) {
+        bail!("invalid {LOG_ENV} value `{raw_level}`; expected one of: info, debug");
+    }
+
     env_logger::Builder::new()
-        .filter_level(log::LevelFilter::Off)
-        .filter_module("crabwatch", cli.log_level.filter())
+        .filter_level(LevelFilter::Off)
+        .filter_module(env!("CARGO_CRATE_NAME"), level)
         .format(|buf, record| {
             use std::io::Write;
             writeln!(buf, "{}", record.args())
         })
-        .init();
+        .try_init()
+        .map_err(|error| anyhow::anyhow!("failed to initialize logging: {error}"))?;
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+    init_logging()?;
 
     match cli.command {
         Command::Analyze {

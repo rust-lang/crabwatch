@@ -1,25 +1,9 @@
 use crate::{clone, github, scan};
 use anyhow::{Context as _, anyhow, bail};
 use futures::stream::StreamExt;
-use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 const MAX_CONCURRENT_REPOS: usize = 8;
-
-#[derive(Clone, Copy, Debug, PartialEq, clap::ValueEnum)]
-pub enum LogLevel {
-    Info,
-    Debug,
-}
-
-impl LogLevel {
-    pub fn filter(self) -> log::LevelFilter {
-        match self {
-            LogLevel::Info => log::LevelFilter::Info,
-            LogLevel::Debug => log::LevelFilter::Debug,
-        }
-    }
-}
 
 fn level_for(outcome: &scan::ScanOutcome) -> log::Level {
     match outcome {
@@ -123,11 +107,8 @@ async fn analyze_repo(
     zizmor_config: &Path,
     token: &str,
 ) -> anyhow::Result<(String, scan::ScanOutcome)> {
-    let mut out = String::new();
-
     let sha = github::fetch_head_commit(client, &parsed.org, &parsed.repo, token).await?;
-    writeln!(out, "HEAD commit: {sha}")?;
-
+    log::debug!("HEAD commit: {sha}");
     let path = cache_path(parsed, crabwatch_dir, &sha);
     let repo_cache_dir = path
         .parent()
@@ -140,16 +121,16 @@ async fn analyze_repo(
     prune_repo_cache(repo_cache_dir, &sha)?;
 
     if path.exists() {
-        writeln!(out, "cache hit: {}", path.display())?;
+        log::debug!("cache hit: {}", path.display());
     } else {
-        writeln!(out, "cloning into: {}", path.display())?;
+        log::debug!("cloning into: {}", path.display());
+
         clone::clone_repo(&parsed.org, &parsed.repo, &path, &sha).await?;
     }
 
     let report = scan::scan_workflows(&path, zizmor_config, token).await?;
-    writeln!(out, "{}", report.output.trim_end())?;
 
-    Ok((out, report.outcome))
+    Ok((report.output.trim_end().to_string(), report.outcome))
 }
 
 pub async fn run(
