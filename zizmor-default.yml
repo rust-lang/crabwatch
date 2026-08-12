@@ -12,6 +12,8 @@ rules:
     disable: false
   impostor-commit:
     disable: false
+  insecure-commands:
+    disable: false
 
   # Disabled
   adhoc-packages:
@@ -38,8 +40,6 @@ rules:
   github-app:
     disable: true
   github-env:
-    disable: true
-  insecure-commands:
     disable: true
   known-vulnerable-actions:
     disable: true
