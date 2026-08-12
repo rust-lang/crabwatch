@@ -8,6 +8,8 @@ rules:
     disable: false
   hardcoded-container-credentials:
     disable: false
+  dependabot-execution:
+    disable: false
 
   # Disabled
   adhoc-packages:
@@ -26,8 +28,6 @@ rules:
   dangerous-triggers:
     disable: true
   dependabot-cooldown:
-    disable: true
-  dependabot-execution:
     disable: true
   excessive-permissions:
     disable: true
