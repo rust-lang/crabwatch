@@ -38,4 +38,6 @@ jobs:
         with:
           advanced-security: false
           config: zizmor-default.yml
+          # Don't fail on repositories without GitHub Actions workflows.
+          fail-on-no-inputs: false
           persona: pedantic
