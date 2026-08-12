@@ -16,6 +16,8 @@ rules:
     disable: false
   insecure-url-scheme:
     disable: false
+  known-vulnerable-actions:
+    disable: false
 
   # Disabled
   adhoc-packages:
@@ -42,8 +44,6 @@ rules:
   github-app:
     disable: true
   github-env:
-    disable: true
-  known-vulnerable-actions:
     disable: true
   misfeature:
     disable: true
