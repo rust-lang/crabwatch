@@ -22,6 +22,10 @@ rules:
     disable: false
   typosquat-uses:
     disable: false
+  unsound-condition:
+    disable: false
+  unsound-contains:
+    disable: false
 
   # Disabled
   adhoc-packages:
@@ -78,10 +82,6 @@ rules:
   unpinned-uses:
     disable: true
   unredacted-secrets:
-    disable: true
-  unsound-condition:
-    disable: true
-  unsound-contains:
     disable: true
   unsound-ternary:
     disable: true
