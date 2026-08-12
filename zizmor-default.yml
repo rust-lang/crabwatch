@@ -18,6 +18,8 @@ rules:
     disable: false
   known-vulnerable-actions:
     disable: false
+  overprovisioned-secrets:
+    disable: false
 
   # Disabled
   adhoc-packages:
@@ -48,8 +50,6 @@ rules:
   misfeature:
     disable: true
   obfuscation:
-    disable: true
-  overprovisioned-secrets:
     disable: true
   ref-confusion:
     disable: true
