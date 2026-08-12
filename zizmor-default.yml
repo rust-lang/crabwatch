@@ -13,6 +13,7 @@ rules:
   adhoc-packages:
     disable: true
   anonymous-definition:
+    # Disabled because it doesn't have a security impact.
     disable: true
   archived-uses:
     disable: true
