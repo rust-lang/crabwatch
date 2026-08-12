@@ -6,9 +6,9 @@ rules:
   # Enabled
   bot-conditions:
     disable: false
-  hardcoded-container-credentials:
-    disable: false
   dependabot-execution:
+    disable: false
+  hardcoded-container-credentials:
     disable: false
   impostor-commit:
     disable: false
