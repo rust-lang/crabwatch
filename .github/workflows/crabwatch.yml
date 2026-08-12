@@ -38,3 +38,4 @@ jobs:
         with:
           advanced-security: false
           config: zizmor-default.yml
+          persona: pedantic

@@ -23,6 +23,8 @@ fn zizmor_command(repo_path: &Path, config_path: &Path, github_token: &str) -> C
         .env("ZIZMOR_GITHUB_TOKEN", github_token)
         .arg("--config")
         .arg(config_path)
+        .arg("--persona")
+        .arg("pedantic")
         // Fail on GitHub workflow syntax error.
         .arg("--strict-collection")
         .arg(repo_path);
