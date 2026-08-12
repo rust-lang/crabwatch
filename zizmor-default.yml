@@ -18,8 +18,6 @@ rules:
     disable: false
   known-vulnerable-actions:
     disable: false
-  obfuscation:
-    disable: false
 
   # Disabled
   adhoc-packages:
@@ -48,6 +46,8 @@ rules:
   github-env:
     disable: true
   misfeature:
+    disable: true
+  obfuscation:
     disable: true
   overprovisioned-secrets:
     disable: true
