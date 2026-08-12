@@ -10,6 +10,8 @@ rules:
     disable: false
   dependabot-execution:
     disable: false
+  impostor-commit:
+    disable: false
 
   # Disabled
   adhoc-packages:
@@ -36,8 +38,6 @@ rules:
   github-app:
     disable: true
   github-env:
-    disable: true
-  impostor-commit:
     disable: true
   insecure-commands:
     disable: true
