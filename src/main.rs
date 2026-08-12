@@ -7,6 +7,7 @@ mod clone;
 mod command;
 mod github;
 mod scan;
+mod security_fork;
 
 /// Analyze CI and best practices across Rust project repos
 #[derive(Parser)]

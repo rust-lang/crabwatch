@@ -1,3 +1,4 @@
+use crate::security_fork;
 use anyhow::{Context, anyhow, bail};
 use serde::Deserialize;
 
@@ -97,6 +98,7 @@ pub fn list_repos_query(org: &str, cursor: Option<&str>) -> String {
             repositories(first: 100, after: $cursor, isFork: false, isArchived: false) { \
                 nodes { \
                     name \
+                    isPrivate \
                     workflows: object(expression: \"HEAD:.github/workflows\") { __typename } \
                 } \
                 pageInfo { hasNextPage endCursor } \
@@ -129,10 +131,11 @@ pub async fn list_org_repos(
             .map(|o| o.repositories)
             .ok_or_else(|| anyhow!("organization {org} not found"))?;
 
-        let repositories = connection
-            .nodes
-            .into_iter()
-            .filter_map(|node| node.has_workflows_directory().then_some(node.name));
+        let repositories = connection.nodes.into_iter().filter_map(|node| {
+            (node.has_workflows_directory()
+                && !security_fork::is_security_advisory_fork(&node.name, node.is_private))
+            .then_some(node.name)
+        });
 
         repos.extend(repositories);
 
@@ -173,6 +176,7 @@ struct RepositoryConnection {
 #[serde(rename_all = "camelCase")]
 struct RepoNode {
     name: String,
+    is_private: bool,
     workflows: Option<GitObject>,
 }
 
@@ -208,13 +212,14 @@ mod tests {
 
     #[test]
     fn list_repos_query_snapshot() {
-        insta::assert_snapshot!(list_repos_query("rust-lang", Some("cursor")), @r#"{"query":"query($org: String!, $cursor: String) { organization(login: $org) { repositories(first: 100, after: $cursor, isFork: false, isArchived: false) { nodes { name workflows: object(expression: \"HEAD:.github/workflows\") { __typename } } pageInfo { hasNextPage endCursor } } } }","variables":{"cursor":"cursor","org":"rust-lang"}}"#);
+        insta::assert_snapshot!(list_repos_query("rust-lang", Some("cursor")), @r#"{"query":"query($org: String!, $cursor: String) { organization(login: $org) { repositories(first: 100, after: $cursor, isFork: false, isArchived: false) { nodes { name isPrivate workflows: object(expression: \"HEAD:.github/workflows\") { __typename } } pageInfo { hasNextPage endCursor } } } }","variables":{"cursor":"cursor","org":"rust-lang"}}"#);
     }
 
     #[test]
     fn identifies_repository_with_workflows_directory() {
         let json = r#"{
             "name": "crabwatch",
+            "isPrivate": false,
             "workflows": {
                 "__typename": "Tree"
             }
@@ -227,6 +232,7 @@ mod tests {
     fn rejects_repository_without_workflows_directory() {
         let json = r#"{
             "name": "no-workflows",
+            "isPrivate": false,
             "workflows": null
         }"#;
         let node: RepoNode = serde_json::from_str(json).unwrap();
@@ -237,6 +243,7 @@ mod tests {
     fn rejects_non_directory_at_workflows_path() {
         let json = r#"{
             "name": "workflows-is-a-file",
+            "isPrivate": false,
             "workflows": {
                 "__typename": "Blob"
             }
