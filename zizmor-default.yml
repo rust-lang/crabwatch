@@ -22,6 +22,8 @@ rules:
     disable: false
   typosquat-uses:
     disable: false
+  unredacted-secrets:
+    disable: false
   unsound-condition:
     disable: false
   unsound-contains:
@@ -80,8 +82,6 @@ rules:
   unpinned-tools:
     disable: true
   unpinned-uses:
-    disable: true
-  unredacted-secrets:
     disable: true
   unsound-ternary:
     disable: true
