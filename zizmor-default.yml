@@ -20,6 +20,8 @@ rules:
     disable: false
   overprovisioned-secrets:
     disable: false
+  typosquat-uses:
+    disable: false
 
   # Disabled
   adhoc-packages:
@@ -66,8 +68,6 @@ rules:
   superfluous-actions:
     disable: true
   template-injection:
-    disable: true
-  typosquat-uses:
     disable: true
   undocumented-permissions:
     disable: true
