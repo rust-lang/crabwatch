@@ -149,7 +149,11 @@ pub async fn run(
         let parsed = parse_repo(&repo_arg)?;
         let (output, outcome) =
             analyze_repo(&client, &parsed, &crabwatch_dir, &zizmor_config, token).await?;
-        log::log!(level_for(&outcome), "{output}");
+        match outcome {
+            scan::ScanOutcome::Findings => log::info!("{output}"),
+            scan::ScanOutcome::Clean => log::info!("No findings to report."),
+            scan::ScanOutcome::NoWorkflows => log::info!("No workflows found to scan."),
+        }
     } else if let Some(org) = org_arg {
         let repos = github::list_org_repos(&client, &org, token).await?;
         let total_repos = repos.len();
@@ -160,6 +164,7 @@ pub async fn run(
         let zizmor_config = &zizmor_config;
         let org = &org;
         let mut failures = Vec::new();
+        let mut any_findings = false;
 
         let mut stream = futures::stream::iter(repos)
             .map(|repo| {
@@ -178,6 +183,9 @@ pub async fn run(
         while let Some((parsed, result)) = stream.next().await {
             match result {
                 Ok((output, outcome)) => {
+                    if matches!(outcome, scan::ScanOutcome::Findings) {
+                        any_findings = true;
+                    }
                     log::log!(
                         level_for(&outcome),
                         "=== {}/{} ===\n{output}",
@@ -185,6 +193,7 @@ pub async fn run(
                         parsed.repo
                     );
                 }
+
                 Err(err) => {
                     let error = format!("{err:#}");
                     log::error!("failed to scan {}/{}: {error}", parsed.org, parsed.repo);
@@ -196,6 +205,9 @@ pub async fn run(
         if !failures.is_empty() {
             failures.sort_by(|(left, _), (right, _)| left.repo.cmp(&right.repo));
             return Err(incomplete_org_scan_error(org, total_repos, &failures));
+        }
+        if !any_findings {
+            log::info!("Scanned {total_repos} repositories, no findings to report.");
         }
     }
 
