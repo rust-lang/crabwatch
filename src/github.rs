@@ -16,7 +16,7 @@ pub async fn fetch_head_commit(
     token: &str,
 ) -> anyhow::Result<String> {
     let body = head_commit_query(org, repo);
-    let response: GraphQlResponse = post_graphql(client, token, body).await?;
+    let response: GraphQlResponse<GraphQlRepoData> = post_graphql(client, token, body).await?;
     check_graphql_errors(&response.errors)?;
 
     response
@@ -57,12 +57,12 @@ fn check_graphql_errors(errors: &Option<Vec<serde_json::Value>>) -> anyhow::Resu
 }
 
 #[derive(Deserialize)]
-struct GraphQlResponse {
-    data: Option<GraphQlData>,
+struct GraphQlResponse<T> {
+    data: Option<T>,
     errors: Option<Vec<serde_json::Value>>,
 }
 
-impl GraphQlResponse {
+impl GraphQlResponse<GraphQlRepoData> {
     fn head_commit_sha(self) -> Option<String> {
         self.data
             .and_then(|d| d.repository)
@@ -72,7 +72,7 @@ impl GraphQlResponse {
 }
 
 #[derive(Deserialize)]
-struct GraphQlData {
+struct GraphQlRepoData {
     repository: Option<Repository>,
 }
 
@@ -115,14 +115,14 @@ pub fn list_repos_query(org: &str, cursor: Option<&str>) -> String {
 pub async fn list_org_repos(
     client: &reqwest::Client,
     org: &str,
-    token: &str,
+    github_token: &str,
 ) -> anyhow::Result<Vec<String>> {
     let mut repos = Vec::new();
     let mut cursor: Option<String> = None;
 
     loop {
         let body = list_repos_query(org, cursor.as_deref());
-        let response: OrgReposResponse = post_graphql(client, token, body).await?;
+        let response: OrgReposResponse = post_graphql(client, github_token, body).await?;
         check_graphql_errors(&response.errors)?;
 
         let connection = response
@@ -265,7 +265,7 @@ mod tests {
                 }
             }
         }"#;
-        let parsed: GraphQlResponse = serde_json::from_str(json).unwrap();
+        let parsed: GraphQlResponse<GraphQlRepoData> = serde_json::from_str(json).unwrap();
         let sha = parsed.head_commit_sha();
         assert_eq!(sha, Some("abc123".to_string()));
     }
@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn parses_missing_repository_as_none() {
         let json = r#"{ "data": { "repository": null } }"#;
-        let parsed: GraphQlResponse = serde_json::from_str(json).unwrap();
+        let parsed: GraphQlResponse<GraphQlRepoData> = serde_json::from_str(json).unwrap();
         let sha = parsed.head_commit_sha();
         assert_eq!(sha, None);
     }
@@ -289,7 +289,7 @@ mod tests {
                 }
             ]
         }"#;
-        let parsed: GraphQlResponse = serde_json::from_str(json).unwrap();
+        let parsed: GraphQlResponse<GraphQlRepoData> = serde_json::from_str(json).unwrap();
         assert!(parsed.errors.is_some());
     }
 }
