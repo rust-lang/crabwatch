@@ -105,9 +105,9 @@ async fn analyze_repo(
     parsed: &ParsedRepo,
     crabwatch_dir: &Path,
     zizmor_config: &Path,
-    token: &str,
+    github_token: &str,
 ) -> anyhow::Result<(String, scan::ScanOutcome)> {
-    let sha = github::fetch_head_commit(client, &parsed.org, &parsed.repo, token).await?;
+    let sha = github::fetch_head_commit(client, &parsed.org, &parsed.repo, github_token).await?;
     log::debug!("HEAD commit: {sha}");
     let path = cache_path(parsed, crabwatch_dir, &sha);
     let repo_cache_dir = path
@@ -124,38 +124,41 @@ async fn analyze_repo(
         log::debug!("cache hit: {}", path.display());
     } else {
         log::debug!("cloning into: {}", path.display());
-
-        clone::clone_repo(&parsed.org, &parsed.repo, &path, &sha).await?;
+        clone::clone_repo(&parsed.org, &parsed.repo, github_token, &path, &sha).await?;
     }
 
-    let report = scan::scan_workflows(&path, zizmor_config, token).await?;
+    let report = scan::scan_workflows(&path, zizmor_config, github_token).await?;
 
     Ok((report.output.trim_end().to_string(), report.outcome))
 }
 
 pub async fn run(
+    github_token: &str,
     repo_arg: Option<String>,
     org_arg: Option<String>,
     cache_dir_override: Option<&Path>,
-    token: Option<&str>,
 ) -> anyhow::Result<()> {
-    let token =
-        token.context("a GitHub token is required (--github-token or GITHUB_TOKEN env var)")?;
     let client = reqwest::Client::new();
     let crabwatch_dir = crabwatch_dir(cache_dir_override)?;
     let zizmor_config = scan::sync_zizmor_config(&crabwatch_dir)?;
 
     if let Some(repo_arg) = repo_arg {
         let parsed = parse_repo(&repo_arg)?;
-        let (output, outcome) =
-            analyze_repo(&client, &parsed, &crabwatch_dir, &zizmor_config, token).await?;
+        let (output, outcome) = analyze_repo(
+            &client,
+            &parsed,
+            &crabwatch_dir,
+            &zizmor_config,
+            github_token,
+        )
+        .await?;
         match outcome {
             scan::ScanOutcome::Findings => log::info!("{output}"),
             scan::ScanOutcome::Clean => log::info!("No findings to report."),
             scan::ScanOutcome::NoWorkflows => log::info!("No workflows found to scan."),
         }
     } else if let Some(org) = org_arg {
-        let repos = github::list_org_repos(&client, &org, token).await?;
+        let repos = github::list_org_repos(&client, &org, github_token).await?;
         let total_repos = repos.len();
         log::debug!("found {total_repos} repos with workflows in {org}");
 
@@ -174,7 +177,8 @@ pub async fn run(
                 };
                 async move {
                     let result =
-                        analyze_repo(client, &parsed, crabwatch_dir, zizmor_config, token).await;
+                        analyze_repo(client, &parsed, crabwatch_dir, zizmor_config, github_token)
+                            .await;
                     (parsed, result)
                 }
             })

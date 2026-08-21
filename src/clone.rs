@@ -6,6 +6,7 @@ use tokio::process::Command;
 pub async fn clone_repo(
     org: &str,
     repo: &str,
+    github_token: &str,
     final_dest: &Path,
     expected_sha: &str,
 ) -> anyhow::Result<()> {
@@ -17,13 +18,13 @@ pub async fn clone_repo(
             .context("failed to remove leftover temp clone directory")?;
     }
 
-    let url = format!("https://github.com/{org}/{repo}.git");
+    let url = format!("https://{github_token}@github.com/{org}/{repo}.git");
 
     let output = Command::new("git")
         .arg("clone")
         .arg("--depth")
         .arg("1")
-        .arg(&url)
+        .arg(url)
         .arg(&temp_dest)
         .output()
         .await
@@ -86,7 +87,8 @@ fn clone_failure(
     stdout: &[u8],
     stderr: &[u8],
 ) -> anyhow::Error {
-    let mut message = format!("git clone failed for {org}/{repo} ({status})");
+    let mut message =
+        format!("git clone failed for https://github.com/{org}/{repo} (status = {status})");
     append_diagnostic(&mut message, "stdout", stdout);
     append_diagnostic(&mut message, "stderr", stderr);
     anyhow!(message)

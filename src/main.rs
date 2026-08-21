@@ -76,19 +76,17 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     init_logging()?;
 
+    let github_token = cli
+        .github_token
+        .context("a GitHub token is required (--github-token or GITHUB_TOKEN env var)")?;
+
     match cli.command {
         Command::Analyze {
             repo,
             org,
             check: _,
         } => {
-            command::analyze::run(
-                repo,
-                org,
-                cli.cache_dir.as_deref(),
-                cli.github_token.as_deref(),
-            )
-            .await?;
+            command::analyze::run(&github_token, repo, org, cli.cache_dir.as_deref()).await?;
         }
     }
     Ok(())
