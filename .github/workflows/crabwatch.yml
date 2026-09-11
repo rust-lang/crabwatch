@@ -34,10 +34,16 @@ jobs:
             -H "Accept: application/vnd.github.raw+json" > zizmor-default.yml
 
       - name: Run zizmor
+        # A missing or empty root .github directory has nothing to audit.
+        if: ${{ hashFiles('.github/**') != '' }}
         uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
         with:
           advanced-security: false
           config: zizmor-default.yml
+          # Only lint the root .github directory.
+          # Ignore nested .github directories because they can belong to
+          # vendored projects or test fixtures.
+          inputs: .github/
           # Don't fail on repositories without GitHub Actions workflows.
           fail-on-no-inputs: false
           persona: pedantic
