@@ -17,7 +17,7 @@ pub struct ScanReport {
     pub outcome: ScanOutcome,
 }
 
-fn zizmor_command(repo_path: &Path, config_path: &Path, github_token: &str) -> Command {
+fn zizmor_command(github_path: &Path, config_path: &Path, github_token: &str) -> Command {
     let mut command = Command::new("zizmor");
     command
         .env("ZIZMOR_GITHUB_TOKEN", github_token)
@@ -27,7 +27,7 @@ fn zizmor_command(repo_path: &Path, config_path: &Path, github_token: &str) -> C
         .arg("pedantic")
         // Fail on GitHub workflow syntax error.
         .arg("--strict-collection")
-        .arg(repo_path);
+        .arg(github_path);
     command
 }
 
@@ -55,12 +55,28 @@ pub(crate) fn sync_zizmor_config(crabwatch_dir: &Path) -> anyhow::Result<PathBuf
     Ok(config_path)
 }
 
+fn root_github_path(repo_path: &Path) -> anyhow::Result<Option<PathBuf>> {
+    let github_path = repo_path.join(".github");
+    let path = github_path
+        .try_exists()
+        .with_context(|| format!("failed to inspect GitHub directory at {github_path:?}"))?
+        .then_some(github_path);
+    Ok(path)
+}
+
 pub async fn scan_workflows(
     repo_path: &Path,
     config_path: &Path,
     github_token: &str,
 ) -> anyhow::Result<ScanReport> {
-    let output = zizmor_command(repo_path, config_path, github_token)
+    let Some(github_path) = root_github_path(repo_path)? else {
+        return Ok(ScanReport {
+            output: "no workflows to scan".to_string(),
+            outcome: ScanOutcome::NoWorkflows,
+        });
+    };
+
+    let output = zizmor_command(&github_path, config_path, github_token)
         .output()
         .await;
 
@@ -103,6 +119,25 @@ pub async fn scan_workflows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn nested_workflows_without_root_github_are_not_scanned() {
+        let repo = tempfile::tempdir().unwrap();
+        let nested_workflows = repo.path().join("vendor/project/.github/workflows");
+        std::fs::create_dir_all(&nested_workflows).unwrap();
+        std::fs::write(
+            nested_workflows.join("publish.yml"),
+            "on: push\njobs:\n  publish:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hello\n",
+        )
+        .unwrap();
+        let config_dir = tempfile::tempdir().unwrap();
+        let config_path = sync_zizmor_config(config_dir.path()).unwrap();
+
+        let report = scan_workflows(repo.path(), &config_path, "").await.unwrap();
+
+        assert_eq!(report.outcome, ScanOutcome::NoWorkflows);
+        assert_eq!(report.output, "no workflows to scan");
+    }
 
     #[test]
     fn creates_config_and_keeps_identical_file() {
