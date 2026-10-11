@@ -228,3 +228,11 @@ repositories:
         disable: false
       unpinned-uses:
         disable: false
+  rust-lang/a-mir-formality:
+    rules:
+      ref-version-mismatch:
+        disable: false
+      stale-action-refs:
+        disable: false
+      unpinned-uses:
+        disable: false
