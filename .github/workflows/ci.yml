@@ -141,10 +141,12 @@ jobs:
           owner: rust-lang # zizmor: ignore[github-app]
           permission-contents: read
 
+      # The logs of this repository are public, so don't show the names,
+      # zizmor output and errors of private repositories.
       - name: Analyze rust-lang
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: cargo run --locked -- analyze --org rust-lang
+        run: cargo run --locked -- analyze --org rust-lang --redact-private
 
   # Summary job for the merge queue.
   # ALL THE PREVIOUS JOBS NEED TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
