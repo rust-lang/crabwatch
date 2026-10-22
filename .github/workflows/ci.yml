@@ -90,8 +90,8 @@ jobs:
           # the release doesn't support the version.
           version: 1.31.1
 
-  # Check that the changes don't introduce zizmor findings in any repository
-  # where the Crabwatch workflow runs.
+  # Fail if zizmor reports findings in any rust-lang repository that the CLI
+  # analyzes, so that the changes don't introduce findings.
   analyze-org:
     name: Analyze rust-lang
     # The GitHub App secrets are only available in the merge queue.

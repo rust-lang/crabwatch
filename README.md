@@ -69,9 +69,9 @@ repository definition.
 
 The workflow does not run the Crabwatch CLI.
 The CLI is a separate tool for auditing repositories with the same configuration.
-The merge queue of this repository runs it to check that changes, such as to the
-zizmor policy or the zizmor version, don't introduce zizmor findings in
-`rust-lang` repositories.
+The merge queue of this repository runs `analyze --org rust-lang` and fails if
+zizmor reports findings in any of the eligible repositories, so that changes,
+such as to the zizmor policy or the zizmor version, don't introduce findings.
 
 ## CLI usage
 
