@@ -67,5 +67,5 @@ jobs:
           fail-on-no-inputs: false
           persona: pedantic
           # Not updated by bumping zizmor-action. Must be supported by the
-          # release above and match ci.yml (checked by a test).
+          # release above. ci.yml reads it from here.
           version: 1.31.1
