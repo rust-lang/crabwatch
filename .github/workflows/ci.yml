@@ -85,11 +85,52 @@ jobs:
         with:
           persona: pedantic
           advanced-security: false
+
+  # Check that the changes don't introduce zizmor findings in any repository
+  # where the Crabwatch workflow runs.
+  analyze-org:
+    name: Analyze rust-lang
+    # The GitHub App secrets are only available in the merge queue.
+    if: ${{ github.event_name == 'merge_group' }}
+    runs-on: ubuntu-24.04
+    environment: merge-queue
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust
+        uses: $/.github/actions/setup-rust
+
+      - name: Install zizmor
+        uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+        with:
+          # Keep in sync with the zizmor version run by zizmor-action in crabwatch.yml.
+          tool: zizmor@1.31.1
+
+      - name: Generate GitHub App token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ secrets.CRABWATCH_GH_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CRABWATCH_GH_APP_PRIVATE_KEY }}
+          # The scan reads every repository of the organization, including
+          # the private ones that `github.token` can't access.
+          owner: rust-lang # zizmor: ignore[github-app]
+          permission-contents: read
+
+      - name: Analyze rust-lang
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: cargo run -- analyze --org rust-lang
+
   # Summary job for the merge queue.
   # ALL THE PREVIOUS JOBS NEED TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
   CI:
     name: CI
-    needs: [test, typos, zizmor]
+    needs: [test, typos, zizmor, analyze-org]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     steps:
