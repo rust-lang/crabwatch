@@ -123,6 +123,10 @@ jobs:
         uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
         with:
           tool: zizmor@${{ needs.zizmor.outputs.zizmor-version }}
+          # zizmor gets the GitHub App token, so if this release doesn't know
+          # the version, fail instead of installing zizmor without a checksum.
+          # Bump this release together with the zizmor version.
+          fallback: none
 
       # Build before generating the token, and run the binary without cargo,
       # so that cargo doesn't build or resolve anything while the token is
