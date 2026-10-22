@@ -66,4 +66,6 @@ jobs:
           # Don't fail on repositories without GitHub Actions workflows.
           fail-on-no-inputs: false
           persona: pedantic
+          # Not updated by bumping zizmor-action. Must be supported by the
+          # release above and match ci.yml (checked by a test).
           version: 1.31.1
