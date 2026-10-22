@@ -125,8 +125,8 @@ jobs:
           tool: zizmor@${{ needs.zizmor.outputs.zizmor-version }}
 
       # Build before generating the token, and run the binary without cargo,
-      # so that the build scripts and proc macros of the dependencies can't read
-      # the token. `--locked` fails instead of resolving new versions.
+      # so that cargo doesn't build or resolve anything while the token is
+      # available. `--locked` fails instead of resolving new versions.
       - name: Build
         run: cargo build --locked
 
