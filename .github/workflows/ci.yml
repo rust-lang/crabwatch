@@ -124,6 +124,12 @@ jobs:
         with:
           tool: zizmor@${{ needs.zizmor.outputs.zizmor-version }}
 
+      # Build before generating the token, so that the build scripts and proc
+      # macros of the dependencies can't read it, and the build doesn't use up
+      # the token lifetime. `--locked` fails instead of resolving new versions.
+      - name: Build
+        run: cargo build --locked
+
       - name: Generate GitHub App token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
@@ -138,7 +144,7 @@ jobs:
       - name: Analyze rust-lang
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: cargo run -- analyze --org rust-lang
+        run: cargo run --locked -- analyze --org rust-lang
 
   # Summary job for the merge queue.
   # ALL THE PREVIOUS JOBS NEED TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
