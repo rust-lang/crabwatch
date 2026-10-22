@@ -67,8 +67,11 @@ set `crabwatch = true` in the
 section of their [`team`](https://github.com/rust-lang/team/tree/main/repos)
 repository definition.
 
-The workflow does not run the Crabwatch CLI. The CLI is a separate tool for
-manually auditing repositories with the same configuration.
+The workflow does not run the Crabwatch CLI.
+The CLI is a separate tool for auditing repositories with the same configuration.
+The merge queue of this repository runs it to check that changes, such as to the
+zizmor policy or the zizmor version, don't introduce zizmor findings in
+`rust-lang` repositories.
 
 ## CLI usage
 
@@ -82,8 +85,6 @@ GITHUB_TOKEN=$(gh auth token) cargo run -- analyze --org rust-lang
 ```
 
 The command fails if zizmor reports findings in any repository.
-The merge queue of this repository runs it to make sure that changes don't make
-the Crabwatch workflow fail in any `rust-lang` repository.
 
 If the output ends up in public logs, such as CI, pass `--redact-private`.
 It hides the names, zizmor output and errors of private repositories and only
