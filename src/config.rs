@@ -267,6 +267,21 @@ repositories:
         assert!(include_str!("../.github/workflows/crabwatch.yml").contains(BUILD_CONFIG_EXPR));
     }
 
+    #[test]
+    fn ci_installs_the_same_zizmor_version() {
+        // The merge queue runs the CLI with the zizmor installed by ci.yml to check
+        // that the Crabwatch workflow wouldn't report findings in any repository.
+        let version = include_str!("../.github/workflows/crabwatch.yml")
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("version: "))
+            .expect("crabwatch.yml should set the zizmor version");
+        assert!(
+            include_str!("../.github/workflows/ci.yml")
+                .contains(&format!("tool: zizmor@{version}")),
+            "ci.yml should install zizmor {version}"
+        );
+    }
+
     #[tokio::test]
     async fn rejects_invalid_policies() {
         for (reason, source) in [

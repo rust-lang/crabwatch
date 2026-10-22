@@ -66,3 +66,4 @@ jobs:
           # Don't fail on repositories without GitHub Actions workflows.
           fail-on-no-inputs: false
           persona: pedantic
+          version: 1.31.1
