@@ -120,11 +120,17 @@ pub fn list_repos_query(org: &str, cursor: Option<&str>) -> String {
     .to_string()
 }
 
+/// A repository of an organization.
+pub struct OrgRepo {
+    pub name: String,
+    pub is_private: bool,
+}
+
 pub async fn list_org_repos(
     client: &reqwest::Client,
     org: &str,
     github_token: &str,
-) -> anyhow::Result<Vec<String>> {
+) -> anyhow::Result<Vec<OrgRepo>> {
     let mut repos = Vec::new();
     let mut cursor: Option<String> = None;
 
@@ -142,7 +148,10 @@ pub async fn list_org_repos(
         let repositories = connection.nodes.into_iter().filter_map(|node| {
             (node.has_workflows_directory()
                 && !security_fork::is_security_advisory_fork(&node.name, node.is_private))
-            .then_some(node.name)
+            .then_some(OrgRepo {
+                name: node.name,
+                is_private: node.is_private,
+            })
         });
 
         repos.extend(repositories);

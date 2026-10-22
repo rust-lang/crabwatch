@@ -40,6 +40,14 @@ enum Command {
         #[arg(long)]
         org: Option<String>,
 
+        /// Hide the names, zizmor output and errors of private repositories,
+        /// and only count them. Meant for public logs, such as CI.
+        /// Debug logs (`CRABWATCH_LOG=debug`) can still show their names.
+        // Not `requires = "org"`: clap doesn't enforce it with `--repo`,
+        // because `--org` can't be passed together with `--repo`.
+        #[arg(long, conflicts_with = "repo")]
+        redact_private: bool,
+
         /// Specific check to run (runs all if omitted)
         #[arg(long)]
         check: Option<String>,
@@ -85,9 +93,17 @@ async fn main() -> anyhow::Result<()> {
         Command::Analyze {
             repo,
             org,
+            redact_private,
             check: _,
         } => {
-            command::analyze::run(&github_token, repo, org, cli.cache_dir.as_deref()).await?;
+            command::analyze::run(
+                &github_token,
+                repo,
+                org,
+                redact_private,
+                cli.cache_dir.as_deref(),
+            )
+            .await?;
         }
     }
     Ok(())

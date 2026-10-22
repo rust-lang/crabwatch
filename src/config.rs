@@ -267,6 +267,24 @@ repositories:
         assert!(include_str!("../.github/workflows/crabwatch.yml").contains(BUILD_CONFIG_EXPR));
     }
 
+    #[test]
+    fn ci_runs_the_same_zizmor_action_as_the_workflow() {
+        let action = |workflow: &'static str| {
+            workflow
+                .lines()
+                .find_map(|line| line.trim().strip_prefix("uses: zizmorcore/zizmor-action@"))
+                .expect("no step uses zizmor-action")
+        };
+
+        // The zizmor job of ci.yml runs on pull requests with the zizmor-action
+        // release and the zizmor version of the Crabwatch workflow, so that it
+        // fails before merge if the release doesn't support the version.
+        assert_eq!(
+            action(include_str!("../.github/workflows/ci.yml")),
+            action(include_str!("../.github/workflows/crabwatch.yml"))
+        );
+    }
+
     #[tokio::test]
     async fn rejects_invalid_policies() {
         for (reason, source) in [

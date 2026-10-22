@@ -18,9 +18,28 @@ pub async fn clone_repo(
             .context("failed to remove leftover temp clone directory")?;
     }
 
-    let url = format!("https://{github_token}@github.com/{org}/{repo}.git");
+    // The username keeps `insteadOf` rules for `https://github.com/` from
+    // rewriting the URL, e.g. to clone with the user's SSH key.
+    let url = format!("https://x-access-token@github.com/{org}/{repo}.git");
 
     let output = Command::new("git")
+        // Fail instead of waiting for credentials if the clone isn't authorized.
+        .env("GIT_TERMINAL_PROMPT", "0")
+        // Crabwatch doesn't need Git LFS files, so don't download them.
+        .env("GIT_LFS_SKIP_SMUDGE", "1")
+        // Read by the credential helper below. Git rejects URLs with a password
+        // if `transfer.credentialsInUrl` is `die`, so the token can't be in the
+        // URL.
+        .env("CRABWATCH_GITHUB_TOKEN", github_token)
+        // Reset the credential helpers, so that git doesn't use the user's
+        // helpers to get credentials or to save the token.
+        .arg("-c")
+        .arg("credential.helper=")
+        // GitHub reads the token from the password. Only give it to GitHub: the
+        // programs that git runs, like the Git LFS filter, also use this helper
+        // for hosts that the cloned repository can choose.
+        .arg("-c")
+        .arg(r#"credential.https://github.com.helper=!f() { test "$1" = get && echo "password=$CRABWATCH_GITHUB_TOKEN"; }; f"#)
         .arg("clone")
         .arg("--depth")
         .arg("1")
