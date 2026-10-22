@@ -85,6 +85,10 @@ jobs:
         with:
           persona: pedantic
           advanced-security: false
+          # The zizmor-action release above and this version must match
+          # crabwatch.yml (checked by a test), so that pull requests fail if
+          # the release doesn't support the version.
+          version: 1.31.1
 
   # Check that the changes don't introduce zizmor findings in any repository
   # where the Crabwatch workflow runs.

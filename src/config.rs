@@ -268,7 +268,7 @@ repositories:
     }
 
     #[test]
-    fn ci_installs_the_same_zizmor_version() {
+    fn ci_runs_the_same_zizmor_as_the_workflow() {
         let find_value = |workflow: &'static str, prefix: &str| {
             workflow
                 .lines()
@@ -277,11 +277,21 @@ repositories:
         };
         let ci = include_str!("../.github/workflows/ci.yml");
         let crabwatch = include_str!("../.github/workflows/crabwatch.yml");
+        let action = "uses: zizmorcore/zizmor-action@";
 
         // The merge queue analyzes the organization with the zizmor installed by
         // ci.yml, so it must be the version that the Crabwatch workflow runs.
         assert_eq!(
             find_value(ci, "tool: zizmor@"),
+            find_value(crabwatch, "version: ")
+        );
+        // The zizmor job of ci.yml runs on pull requests with the zizmor-action
+        // release and version of the Crabwatch workflow, so that it fails before
+        // merge if the release doesn't support the version.
+        assert_eq!(find_value(ci, action), find_value(crabwatch, action));
+        // The zizmor job sets the first `version` input of ci.yml.
+        assert_eq!(
+            find_value(ci, "version: "),
             find_value(crabwatch, "version: ")
         );
     }
