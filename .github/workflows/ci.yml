@@ -122,6 +122,9 @@ jobs:
     # the zizmor job ran.
     needs: [test, zizmor]
     runs-on: ubuntu-24.04
+    # The scan usually takes a few minutes, but the requests of the CLI, git
+    # and zizmor don't time out.
+    timeout-minutes: 30
     environment: merge-queue
     permissions:
       contents: read
