@@ -27,9 +27,19 @@ jobs:
           components: rustfmt clippy
 
       - name: Build
-        run: cargo build --workspace --all-targets
+        run: cargo build --locked --workspace --all-targets
         env:
           RUSTFLAGS: "--deny warnings"
+
+      # The analyze-org job runs this binary.
+      - name: Upload CLI
+        if: ${{ github.event_name == 'merge_group' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: crabwatch
+          path: target/debug/crabwatch
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -105,20 +115,14 @@ jobs:
     name: Analyze rust-lang
     # The GitHub App secrets are only available in the merge queue.
     if: ${{ github.event_name == 'merge_group' }}
-    # Install the zizmor version that the zizmor job ran.
-    needs: zizmor
+    # Run the CLI that the test job built, and install the zizmor version that
+    # the zizmor job ran.
+    needs: [test, zizmor]
     runs-on: ubuntu-24.04
     environment: merge-queue
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
-      - name: Setup Rust
-        uses: $/.github/actions/setup-rust
-
       - name: Install zizmor
         uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
         with:
@@ -128,11 +132,18 @@ jobs:
           # Bump this release together with the zizmor version.
           fallback: none
 
-      # Build before generating the token, and run the binary without cargo,
-      # so that cargo doesn't build or resolve anything while the token is
-      # available. `--locked` fails instead of resolving new versions.
-      - name: Build
-        run: cargo build --locked
+      # Use the binary built by the test job, so that build scripts, proc
+      # macros and the Rust toolchain and cache setup don't run in this job,
+      # which has the GitHub App secrets. The CLI, its dependencies and zizmor
+      # still run with the token.
+      - name: Download CLI
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: crabwatch
+
+      # Artifacts don't keep the executable bit.
+      - name: Make CLI executable
+        run: chmod +x crabwatch
 
       - name: Generate GitHub App token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -150,7 +161,7 @@ jobs:
       - name: Analyze rust-lang
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: target/debug/crabwatch analyze --org rust-lang --redact-private
+        run: ./crabwatch analyze --org rust-lang --redact-private
 
   # Summary job for the merge queue.
   # ALL THE PREVIOUS JOBS NEED TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
