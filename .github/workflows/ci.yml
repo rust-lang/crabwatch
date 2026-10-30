@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    outputs:
+      cli-artifact-id: ${{ steps.upload-cli.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -27,9 +29,20 @@ jobs:
           components: rustfmt clippy
 
       - name: Build
-        run: cargo build --workspace --all-targets
+        run: cargo build --locked --workspace --all-targets
         env:
           RUSTFLAGS: "--deny warnings"
+
+      # The analyze-org job runs this binary.
+      - name: Upload CLI
+        id: upload-cli
+        if: ${{ github.event_name == 'merge_group' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: crabwatch
+          path: target/debug/crabwatch
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -75,21 +88,95 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    outputs:
+      zizmor-version: ${{ steps.zizmor-version.outputs.version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+
+      # crabwatch.yml is the only file that sets the zizmor version.
+      - name: Read zizmor version
+        id: zizmor-version
+        run: |
+          version=$(yq --exit-status '.jobs.zizmor.steps[] | select(.uses == "zizmorcore/zizmor-action@*") | .with.version' .github/workflows/crabwatch.yml)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Run zizmor
         uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
         with:
           persona: pedantic
           advanced-security: false
+          # The zizmor-action release above must match crabwatch.yml (checked
+          # by a test), so that pull requests fail if the release doesn't
+          # support the version.
+          version: ${{ steps.zizmor-version.outputs.version }}
+
+  # Fail if zizmor reports findings in any rust-lang repository that the CLI
+  # analyzes, so that the changes don't introduce findings.
+  analyze-org:
+    name: Analyze rust-lang
+    # The GitHub App secrets are only available in the merge queue.
+    if: ${{ github.event_name == 'merge_group' }}
+    # Run the CLI that the test job built, and install the zizmor version that
+    # the zizmor job ran.
+    needs: [test, zizmor]
+    runs-on: ubuntu-24.04
+    # The scan usually takes a few minutes, but the requests of the CLI, git
+    # and zizmor don't time out.
+    timeout-minutes: 30
+    environment: merge-queue
+    permissions:
+      contents: read
+    steps:
+      - name: Install zizmor
+        uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+        with:
+          tool: zizmor@${{ needs.zizmor.outputs.zizmor-version }}
+          # zizmor gets the GitHub App token, so if this release doesn't know
+          # the version, fail instead of installing zizmor without a checksum.
+          # Bump this release together with the zizmor version.
+          fallback: none
+
+      # Use the binary built by the test job, so that build scripts, proc
+      # macros and the Rust toolchain and cache setup don't run in this job,
+      # which has the GitHub App secrets. Everything that runs in this job,
+      # including the code that they add to the binary, can still read the
+      # token and, through the memory of the runner, the private key.
+      - name: Download CLI
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          # Unlike the name, the ID changes if another job of the run replaces
+          # the artifact.
+          artifact-ids: ${{ needs.test.outputs.cli-artifact-id }}
+
+      # Artifacts don't keep the executable bit.
+      - name: Make CLI executable
+        run: chmod +x crabwatch
+
+      - name: Generate GitHub App token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ secrets.CRABWATCH_GH_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CRABWATCH_GH_APP_PRIVATE_KEY }}
+          # The scan reads every repository of the organization, including
+          # the private ones that `github.token` can't access.
+          owner: rust-lang # zizmor: ignore[github-app]
+          permission-contents: read
+
+      # The logs of this repository are public, so don't show the names,
+      # zizmor output and errors of private repositories.
+      - name: Analyze rust-lang
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: ./crabwatch analyze --org rust-lang --redact-private
+
   # Summary job for the merge queue.
   # ALL THE PREVIOUS JOBS NEED TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
   CI:
     name: CI
-    needs: [test, typos, zizmor]
+    needs: [test, typos, zizmor, analyze-org]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     steps:
