@@ -137,9 +137,9 @@ jobs:
 
       # Use the binary built by the test job, so that build scripts, proc
       # macros and the Rust toolchain and cache setup don't run in this job,
-      # which has the GitHub App secrets. The CLI, its dependencies and zizmor
-      # still run in this job, so they can read the token and, through the
-      # memory of the runner, the private key.
+      # which has the GitHub App secrets. Everything that runs in this job,
+      # including the code that they add to the binary, can still read the
+      # token and, through the memory of the runner, the private key.
       - name: Download CLI
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
