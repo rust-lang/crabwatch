@@ -1,5 +1,5 @@
 use crate::{clone, config, github, scan};
-use anyhow::{Context as _, anyhow, bail};
+use anyhow::{Context as _, bail};
 use futures::stream::StreamExt;
 use std::path::{Path, PathBuf};
 
@@ -43,7 +43,7 @@ fn incomplete_org_scan_error(
     total_repos: usize,
     failures: &[(ParsedRepo, String)],
     private_failures: usize,
-) -> anyhow::Error {
+) -> String {
     let mut details = failures
         .iter()
         .map(|(repo, error)| format!("  {}/{}: {error}", repo.org, repo.repo))
@@ -52,11 +52,67 @@ fn incomplete_org_scan_error(
         details.push(format!("  private repositories: {private_failures}"));
     }
 
-    anyhow!(
+    format!(
         "organization scan for {org} incomplete: {} of {total_repos} repositories failed:\n{}",
         failures.len() + private_failures,
         details.join("\n")
     )
+}
+
+fn org_findings_error(
+    org: &str,
+    total_repos: usize,
+    repos: &[String],
+    private_repos: usize,
+) -> String {
+    let mut details = repos
+        .iter()
+        .map(|repo| format!("  {org}/{repo}"))
+        .collect::<Vec<_>>();
+    if private_repos > 0 {
+        details.push(format!("  private repositories: {private_repos}"));
+    }
+
+    format!(
+        "zizmor reported findings in {} of {total_repos} repositories of {org}:\n{}",
+        repos.len() + private_repos,
+        details.join("\n")
+    )
+}
+
+fn org_scan_result(
+    org: &str,
+    total_repos: usize,
+    mut failures: Vec<(ParsedRepo, String)>,
+    private_failures: usize,
+    mut repos_with_findings: Vec<String>,
+    private_with_findings: usize,
+) -> anyhow::Result<()> {
+    // Report both lists, so that a failed repository doesn't hide the
+    // findings of the others.
+    let mut errors = Vec::new();
+    if !failures.is_empty() || private_failures > 0 {
+        failures.sort_by(|(left, _), (right, _)| left.repo.cmp(&right.repo));
+        errors.push(incomplete_org_scan_error(
+            org,
+            total_repos,
+            &failures,
+            private_failures,
+        ));
+    }
+    if !repos_with_findings.is_empty() || private_with_findings > 0 {
+        repos_with_findings.sort();
+        errors.push(org_findings_error(
+            org,
+            total_repos,
+            &repos_with_findings,
+            private_with_findings,
+        ));
+    }
+    if !errors.is_empty() {
+        bail!("{}", errors.join("\n"));
+    }
+    Ok(())
 }
 
 pub fn cache_path(repo: &ParsedRepo, crabwatch_dir: &Path, sha: &str) -> PathBuf {
@@ -156,7 +212,10 @@ pub async fn run(
         let (output, outcome) =
             analyze_repo(&client, &parsed, &crabwatch_dir, &policy, github_token).await?;
         match outcome {
-            scan::ScanOutcome::Findings => log::info!("{output}"),
+            scan::ScanOutcome::Findings => {
+                log::info!("{output}");
+                bail!("zizmor reported findings in {repo_arg}");
+            }
             scan::ScanOutcome::Clean => log::info!("No findings to report."),
             scan::ScanOutcome::NoWorkflows => log::info!("No workflows found to scan."),
         }
@@ -170,9 +229,9 @@ pub async fn run(
         let policy = &policy;
         let org = &org;
         let mut failures = Vec::new();
-        let mut any_findings = false;
-        let mut private_with_findings = 0;
         let mut private_failures = 0;
+        let mut repos_with_findings = Vec::new();
+        let mut private_with_findings = 0;
 
         let mut stream = futures::stream::iter(repos)
             .map(|repo| {
@@ -194,10 +253,7 @@ pub async fn run(
             // names and weaknesses, so only count them.
             if redacted {
                 match result {
-                    Ok((_, scan::ScanOutcome::Findings)) => {
-                        any_findings = true;
-                        private_with_findings += 1;
-                    }
+                    Ok((_, scan::ScanOutcome::Findings)) => private_with_findings += 1,
                     Ok(_) => {}
                     Err(_) => private_failures += 1,
                 }
@@ -206,15 +262,15 @@ pub async fn run(
 
             match result {
                 Ok((output, outcome)) => {
-                    if matches!(outcome, scan::ScanOutcome::Findings) {
-                        any_findings = true;
-                    }
                     log::log!(
                         level_for(&outcome),
                         "=== {}/{} ===\n{output}",
                         parsed.org,
                         parsed.repo
                     );
+                    if matches!(outcome, scan::ScanOutcome::Findings) {
+                        repos_with_findings.push(parsed.repo);
+                    }
                 }
 
                 Err(err) => {
@@ -225,25 +281,15 @@ pub async fn run(
             }
         }
 
-        // The zizmor output of the redacted repositories isn't printed, so
-        // count them to show that they have findings.
-        if private_with_findings > 0 {
-            log::info!(
-                "zizmor reported findings in private repositories of {org}: {private_with_findings}"
-            );
-        }
-        if !failures.is_empty() || private_failures > 0 {
-            failures.sort_by(|(left, _), (right, _)| left.repo.cmp(&right.repo));
-            return Err(incomplete_org_scan_error(
-                org,
-                total_repos,
-                &failures,
-                private_failures,
-            ));
-        }
-        if !any_findings {
-            log::info!("Scanned {total_repos} repositories, no findings to report.");
-        }
+        org_scan_result(
+            org,
+            total_repos,
+            failures,
+            private_failures,
+            repos_with_findings,
+            private_with_findings,
+        )?;
+        log::info!("Scanned {total_repos} repositories, no findings to report.");
     }
 
     Ok(())
@@ -277,7 +323,7 @@ mod tests {
     fn error_lists_public_failures_and_counts_private_ones() {
         let failures = [(test_repo(), "clone failed".to_string())];
 
-        let error = incomplete_org_scan_error("rust-lang", 10, &failures, 2).to_string();
+        let error = incomplete_org_scan_error("rust-lang", 10, &failures, 2);
 
         // Only the public failure is listed, but the total also includes the
         // 2 private failures, so it still matches how many repositories failed.
@@ -285,6 +331,57 @@ mod tests {
         organization scan for rust-lang incomplete: 3 of 10 repositories failed:
           rust-lang/crabwatch: clone failed
           private repositories: 2
+        ");
+    }
+
+    #[test]
+    fn org_scan_without_failures_or_findings_succeeds() {
+        assert!(org_scan_result("rust-lang", 10, Vec::new(), 0, Vec::new(), 0).is_ok());
+    }
+
+    #[test]
+    fn org_scan_fails_on_public_findings_alone() {
+        let repos_with_findings = vec!["crabwatch".to_string()];
+
+        let error =
+            org_scan_result("rust-lang", 10, Vec::new(), 0, repos_with_findings, 0).unwrap_err();
+
+        insta::assert_snapshot!(error, @r"
+        zizmor reported findings in 1 of 10 repositories of rust-lang:
+          rust-lang/crabwatch
+        ");
+    }
+
+    #[test]
+    fn org_scan_fails_on_private_findings_alone() {
+        let error = org_scan_result("rust-lang", 10, Vec::new(), 0, Vec::new(), 2).unwrap_err();
+
+        insta::assert_snapshot!(error, @r"
+        zizmor reported findings in 2 of 10 repositories of rust-lang:
+          private repositories: 2
+        ");
+    }
+
+    #[test]
+    fn org_scan_reports_both_failures_and_findings() {
+        let failed_repo = ParsedRepo {
+            org: "rust-lang".to_string(),
+            repo: "foo".to_string(),
+        };
+        let failures = vec![(failed_repo, "clone failed".to_string())];
+        let repos_with_findings = vec!["crabwatch".to_string(), "cargo".to_string()];
+
+        let error =
+            org_scan_result("rust-lang", 10, failures, 2, repos_with_findings, 3).unwrap_err();
+
+        insta::assert_snapshot!(error, @r"
+        organization scan for rust-lang incomplete: 3 of 10 repositories failed:
+          rust-lang/foo: clone failed
+          private repositories: 2
+        zizmor reported findings in 5 of 10 repositories of rust-lang:
+          rust-lang/cargo
+          rust-lang/crabwatch
+          private repositories: 3
         ");
     }
 

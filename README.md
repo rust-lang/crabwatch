@@ -81,6 +81,8 @@ Analyze every eligible repository in a GitHub organization:
 GITHUB_TOKEN=$(gh auth token) cargo run -- analyze --org rust-lang
 ```
 
+The command fails if zizmor reports findings in any repository.
+
 If the output ends up in public logs, such as CI, pass `--redact-private`.
 It hides the names, zizmor output and errors of private repositories and only
 counts them. Debug logs can still show their names.
