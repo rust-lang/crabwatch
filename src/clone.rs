@@ -66,6 +66,14 @@ fn git_clone_command(org: &str, repo: &str, github_token: &str, dest: &Path) -> 
             "CRABWATCH_GIT_AUTH_HEADER",
             format!("Authorization: Basic {credentials}"),
         )
+        // Fails instead of waiting for a password if GitHub rejects the token.
+        // Git runs askpass programs even with terminal prompts disabled, e.g.
+        // the password dialog that VS Code sets in `GIT_ASKPASS`. An empty
+        // `GIT_ASKPASS` turns off `core.askPass` and `SSH_ASKPASS` too.
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ASKPASS", "")
+        // Crabwatch doesn't need Git LFS files, so don't download them.
+        .env("GIT_LFS_SKIP_SMUDGE", "1")
         // Turns off credential helpers for github.com. Otherwise, if GitHub
         // rejects the token, git asks the helpers for the user's saved GitHub
         // login, and when the retry fails too, git tells every helper to erase
