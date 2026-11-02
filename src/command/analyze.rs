@@ -1,6 +1,7 @@
 use crate::{clone, config, github, scan};
 use anyhow::{Context as _, bail};
 use futures::stream::StreamExt;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 const MAX_CONCURRENT_REPOS: usize = 8;
@@ -38,81 +39,63 @@ fn crabwatch_dir(cache_dir_override: Option<&Path>) -> anyhow::Result<PathBuf> {
     }
 }
 
-fn incomplete_org_scan_error(
-    org: &str,
-    total_repos: usize,
-    failures: &[(ParsedRepo, String)],
+/// What scanning the repositories of an organization found.
+///
+/// Public repositories are kept sorted, so that the report doesn't depend on
+/// the order in which the scans complete. Private repositories are only
+/// counted.
+#[derive(Default)]
+struct OrgScanSummary {
+    /// Public repositories that couldn't be scanned, with their error.
+    failures: BTreeMap<String, String>,
     private_failures: usize,
-) -> String {
-    let mut details = failures
-        .iter()
-        .map(|(repo, error)| format!("  {}/{}: {error}", repo.org, repo.repo))
-        .collect::<Vec<_>>();
-    if private_failures > 0 {
-        details.push(format!("  private repositories: {private_failures}"));
-    }
-
-    format!(
-        "organization scan for {org} incomplete: {} of {total_repos} repositories failed:\n{}",
-        failures.len() + private_failures,
-        details.join("\n")
-    )
+    /// Public repositories where zizmor reported findings.
+    findings: BTreeSet<String>,
+    private_findings: usize,
 }
 
-fn org_findings_error(
-    org: &str,
-    total_repos: usize,
-    repos: &[String],
-    private_repos: usize,
-) -> String {
-    let mut details = repos
-        .iter()
-        .map(|repo| format!("  {org}/{repo}"))
-        .collect::<Vec<_>>();
-    if private_repos > 0 {
-        details.push(format!("  private repositories: {private_repos}"));
-    }
+impl OrgScanSummary {
+    fn into_result(self, org: &str, total_repos: usize) -> anyhow::Result<()> {
+        // Report both lists, so that a failed repository doesn't hide the
+        // findings of the others.
+        let mut errors = Vec::new();
 
-    format!(
-        "zizmor reported findings in {} of {total_repos} repositories of {org}:\n{}",
-        repos.len() + private_repos,
-        details.join("\n")
-    )
+        let failed = self.failures.len() + self.private_failures;
+        if failed > 0 {
+            let failures = self
+                .failures
+                .iter()
+                .map(|(repo, error)| format!("{org}/{repo}: {error}"));
+            errors.push(format!(
+                "organization scan for {org} incomplete: {failed} of {total_repos} repositories failed:\n{}",
+                repo_list(failures, self.private_failures)
+            ));
+        }
+
+        let with_findings = self.findings.len() + self.private_findings;
+        if with_findings > 0 {
+            let findings = self.findings.iter().map(|repo| format!("{org}/{repo}"));
+            errors.push(format!(
+                "zizmor reported findings in {with_findings} of {total_repos} repositories of {org}:\n{}",
+                repo_list(findings, self.private_findings)
+            ));
+        }
+
+        if !errors.is_empty() {
+            bail!("{}", errors.join("\n"));
+        }
+        Ok(())
+    }
 }
 
-fn org_scan_result(
-    org: &str,
-    total_repos: usize,
-    mut failures: Vec<(ParsedRepo, String)>,
-    private_failures: usize,
-    mut repos_with_findings: Vec<String>,
-    private_with_findings: usize,
-) -> anyhow::Result<()> {
-    // Report both lists, so that a failed repository doesn't hide the
-    // findings of the others.
-    let mut errors = Vec::new();
-    if !failures.is_empty() || private_failures > 0 {
-        failures.sort_by(|(left, _), (right, _)| left.repo.cmp(&right.repo));
-        errors.push(incomplete_org_scan_error(
-            org,
-            total_repos,
-            &failures,
-            private_failures,
-        ));
-    }
-    if !repos_with_findings.is_empty() || private_with_findings > 0 {
-        repos_with_findings.sort();
-        errors.push(org_findings_error(
-            org,
-            total_repos,
-            &repos_with_findings,
-            private_with_findings,
-        ));
-    }
-    if !errors.is_empty() {
-        bail!("{}", errors.join("\n"));
-    }
-    Ok(())
+/// Lists the public repositories and counts the private ones, one per line.
+fn repo_list(public: impl Iterator<Item = String>, private: usize) -> String {
+    let private = (private > 0).then(|| format!("private repositories: {private}"));
+    public
+        .chain(private)
+        .map(|line| format!("  {line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub fn cache_path(repo: &ParsedRepo, crabwatch_dir: &Path, sha: &str) -> PathBuf {
@@ -228,10 +211,7 @@ pub async fn run(
         let crabwatch_dir = &crabwatch_dir;
         let policy = &policy;
         let org = &org;
-        let mut failures = Vec::new();
-        let mut private_failures = 0;
-        let mut repos_with_findings = Vec::new();
-        let mut private_with_findings = 0;
+        let mut summary = OrgScanSummary::default();
 
         let mut stream = futures::stream::iter(repos)
             .map(|repo| {
@@ -253,9 +233,9 @@ pub async fn run(
             // names and weaknesses, so only count them.
             if redacted {
                 match result {
-                    Ok((_, scan::ScanOutcome::Findings)) => private_with_findings += 1,
+                    Ok((_, scan::ScanOutcome::Findings)) => summary.private_findings += 1,
                     Ok(_) => {}
-                    Err(_) => private_failures += 1,
+                    Err(_) => summary.private_failures += 1,
                 }
                 continue;
             }
@@ -269,26 +249,19 @@ pub async fn run(
                         parsed.repo
                     );
                     if matches!(outcome, scan::ScanOutcome::Findings) {
-                        repos_with_findings.push(parsed.repo);
+                        summary.findings.insert(parsed.repo);
                     }
                 }
 
                 Err(err) => {
                     let error = format!("{err:#}");
                     log::error!("failed to scan {}/{}: {error}", parsed.org, parsed.repo);
-                    failures.push((parsed, error));
+                    summary.failures.insert(parsed.repo, error);
                 }
             }
         }
 
-        org_scan_result(
-            org,
-            total_repos,
-            failures,
-            private_failures,
-            repos_with_findings,
-            private_with_findings,
-        )?;
+        summary.into_result(org, total_repos)?;
         log::info!("Scanned {total_repos} repositories, no findings to report.");
     }
 
@@ -320,10 +293,21 @@ mod tests {
     }
 
     #[test]
-    fn error_lists_public_failures_and_counts_private_ones() {
-        let failures = [(test_repo(), "clone failed".to_string())];
+    fn org_scan_without_failures_or_findings_succeeds() {
+        let summary = OrgScanSummary::default();
 
-        let error = incomplete_org_scan_error("rust-lang", 10, &failures, 2);
+        assert!(summary.into_result("rust-lang", 10).is_ok());
+    }
+
+    #[test]
+    fn org_scan_lists_public_failures_and_counts_private_ones() {
+        let summary = OrgScanSummary {
+            failures: BTreeMap::from([("crabwatch".to_string(), "clone failed".to_string())]),
+            private_failures: 2,
+            ..Default::default()
+        };
+
+        let error = summary.into_result("rust-lang", 10).unwrap_err();
 
         // Only the public failure is listed, but the total also includes the
         // 2 private failures, so it still matches how many repositories failed.
@@ -335,16 +319,13 @@ mod tests {
     }
 
     #[test]
-    fn org_scan_without_failures_or_findings_succeeds() {
-        assert!(org_scan_result("rust-lang", 10, Vec::new(), 0, Vec::new(), 0).is_ok());
-    }
-
-    #[test]
     fn org_scan_fails_on_public_findings_alone() {
-        let repos_with_findings = vec!["crabwatch".to_string()];
+        let summary = OrgScanSummary {
+            findings: BTreeSet::from(["crabwatch".to_string()]),
+            ..Default::default()
+        };
 
-        let error =
-            org_scan_result("rust-lang", 10, Vec::new(), 0, repos_with_findings, 0).unwrap_err();
+        let error = summary.into_result("rust-lang", 10).unwrap_err();
 
         insta::assert_snapshot!(error, @r"
         zizmor reported findings in 1 of 10 repositories of rust-lang:
@@ -354,7 +335,12 @@ mod tests {
 
     #[test]
     fn org_scan_fails_on_private_findings_alone() {
-        let error = org_scan_result("rust-lang", 10, Vec::new(), 0, Vec::new(), 2).unwrap_err();
+        let summary = OrgScanSummary {
+            private_findings: 2,
+            ..Default::default()
+        };
+
+        let error = summary.into_result("rust-lang", 10).unwrap_err();
 
         insta::assert_snapshot!(error, @r"
         zizmor reported findings in 2 of 10 repositories of rust-lang:
@@ -364,15 +350,14 @@ mod tests {
 
     #[test]
     fn org_scan_reports_both_failures_and_findings() {
-        let failed_repo = ParsedRepo {
-            org: "rust-lang".to_string(),
-            repo: "foo".to_string(),
+        let summary = OrgScanSummary {
+            failures: BTreeMap::from([("foo".to_string(), "clone failed".to_string())]),
+            private_failures: 2,
+            findings: BTreeSet::from(["crabwatch".to_string(), "cargo".to_string()]),
+            private_findings: 3,
         };
-        let failures = vec![(failed_repo, "clone failed".to_string())];
-        let repos_with_findings = vec!["crabwatch".to_string(), "cargo".to_string()];
 
-        let error =
-            org_scan_result("rust-lang", 10, failures, 2, repos_with_findings, 3).unwrap_err();
+        let error = summary.into_result("rust-lang", 10).unwrap_err();
 
         insta::assert_snapshot!(error, @r"
         organization scan for rust-lang incomplete: 3 of 10 repositories failed:
