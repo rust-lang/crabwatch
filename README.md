@@ -61,11 +61,14 @@ A [ruleset](https://github.com/organizations/rust-lang/settings/rules) in the
 configured to run the file
 [`.github/workflows/crabwatch.yml`](./.github/workflows/crabwatch.yml).
 
-The workflow runs for pull requests and merge queue checks in repositories that
-set `crabwatch = true` in the
-[`[custom-properties]`](https://github.com/rust-lang/team/blob/main/docs/toml-schema.md#repository-custom-properties)
-section of their [`team`](https://github.com/rust-lang/team/tree/main/repos)
-repository definition.
+The workflow runs for pull requests and merge queue checks in repositories whose
+`crabwatch`
+[custom property](https://github.com/rust-lang/team/blob/main/docs/toml-schema.md#repository-custom-properties)
+is `true`.
+The [`team`](https://github.com/rust-lang/team) repository sets it on all
+non-archived `rust-lang` repositories, except those listed in
+`crabwatch-deny-list` in its root
+[`config.toml`](https://github.com/rust-lang/team/blob/main/config.toml).
 
 The workflow does not run the Crabwatch CLI. The CLI is a separate tool for
 manually auditing repositories with the same configuration.
