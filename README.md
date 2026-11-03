@@ -51,6 +51,8 @@ repositories:
 
 * Repositories should never experience CI failures due to new versions of crabwatch or zizmor.
   Before introducing new mandatory lints, the Infrastructure team will raise PRs to fix them.
+  The workflow pins the zizmor version, and Renovate proposes zizmor updates in their own PR,
+  so that they can be reviewed together with the policy.
 * Checks are managed centrally here, so other repositories only need their own zizmor setup
   if they want stricter checks.
 

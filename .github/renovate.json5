@@ -1,4 +1,14 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: ["github>rust-lang/renovate"],
+  packageRules: [
+    {
+      // The zizmor version in crabwatch.yml. Its updates can affect every
+      // repository running Crabwatch, so propose them in their own PR, to
+      // review them with zizmor-policy.yml.
+      matchManagers: ["github-actions"],
+      matchPackageNames: ["ghcr.io/zizmorcore/zizmor"],
+      groupName: "zizmor",
+    },
+  ],
 }

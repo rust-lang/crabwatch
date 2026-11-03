@@ -66,3 +66,8 @@ jobs:
           # Don't fail on repositories without GitHub Actions workflows.
           fail-on-no-inputs: false
           persona: pedantic
+          # Pinned, so that updating zizmor-action doesn't update zizmor.
+          # Renovate proposes zizmor updates in their own PR. ci.yml runs this
+          # version with the same release, so pull requests fail if the
+          # release doesn't support it.
+          version: 1.32.0
