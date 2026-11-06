@@ -364,6 +364,8 @@ repositories:
         disable: false
       excessive-permissions:
         disable: false
+      github-app:
+        disable: false
       self-repository:
         # TODO
         disable: true
