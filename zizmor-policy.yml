@@ -360,6 +360,8 @@ repositories:
         disable: true
   rust-lang/bors:
     rules:
+      artipacked:
+        disable: false
       self-repository:
         # TODO
         disable: true
