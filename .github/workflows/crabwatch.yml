@@ -31,7 +31,7 @@ jobs:
           If you encounter issues, ask for help in #t-infra: https://rust-lang.zulipchat.com/#narrow/stream/242791-t-infra
           EOF
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -55,7 +55,7 @@ jobs:
       - name: Run zizmor
         # A missing or empty root .github directory has nothing to audit.
         if: ${{ hashFiles('.github/**') != '' }}
-        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        uses: zizmorcore/zizmor-action@v0.8.1
         with:
           advanced-security: false
           config: ${{ runner.temp }}/crabwatch-zizmor.yml
