@@ -360,9 +360,26 @@ repositories:
         disable: true
   rust-lang/bors:
     rules:
-      self-repository:
-        # TODO
-        disable: true
+      artipacked:
+        disable: false
+      excessive-permissions:
+        disable: false
+      github-app:
+        disable: false
+      ref-version-mismatch:
+        disable: false
+      stale-action-refs:
+        disable: false
+      superfluous-actions:
+        disable: false
+      template-injection:
+        disable: false
+      undocumented-permissions:
+        disable: false
+      unpinned-images:
+        disable: false
+      unpinned-uses:
+        disable: false
   rust-lang/miri:
     rules:
       artipacked:
