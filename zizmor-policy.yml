@@ -596,3 +596,7 @@ repositories:
         disable: false
       unpinned-uses:
         disable: false
+  rust-lang/literal-escaper:
+    rules:
+      artipacked:
+        disable: false
