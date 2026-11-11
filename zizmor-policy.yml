@@ -654,3 +654,5 @@ repositories:
         disable: false
       superfluous-actions:
         disable: false
+      template-injection:
+        disable: false
