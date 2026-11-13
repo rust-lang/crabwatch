@@ -80,11 +80,18 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Read zizmor version
+        id: zizmor-version
+        run: |
+          version=$(yq --exit-status '.jobs.zizmor.steps[] | select(.uses == "zizmorcore/zizmor-action@*") | .with.version' .github/workflows/crabwatch.yml)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Run zizmor
         uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
           persona: pedantic
           advanced-security: false
+          version: ${{ steps.zizmor-version.outputs.version }}
   # Summary job for the merge queue.
   # ALL THE PREVIOUS JOBS NEED TO BE ADDED TO THE `needs` SECTION OF THIS JOB!
   CI:

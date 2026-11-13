@@ -1,4 +1,23 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: ["github>rust-lang/renovate"],
+  packageRules: [
+    {
+      // The zizmor version (`version` input in crabwatch.yml) affects every
+      // repository running Crabwatch: update it in its own PR, together with
+      // the zizmor-action.
+      matchPackageNames: ["ghcr.io/zizmorcore/zizmor", "zizmorcore/zizmor-action"],
+      groupName: "zizmor",
+      // Put major updates in the same branch as minor ones. Otherwise a new
+      // zizmor major goes alone to `renovate/major-zizmor` and never meets
+      // `minimumGroupSize`.
+      separateMajorMinor: false,
+      // Hold back a zizmor update (1 update) until zizmor-action supports it.
+      // zizmor-action alone is 2 updates (ci.yml and crabwatch.yml).
+      minimumGroupSize: 2,
+      prBodyNotes: [
+        "> [!WARNING]\n> This zizmor update affects every `rust-lang` repository that runs Crabwatch. Check whether it adds new audits and update `zizmor-policy.yml` accordingly.",
+      ],
+    },
+  ],
 }
