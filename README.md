@@ -71,7 +71,10 @@ non-archived `rust-lang` repositories, except those listed in
 [`config.toml`](https://github.com/rust-lang/team/blob/main/config.toml).
 
 The workflow does not run the Crabwatch CLI. The CLI is a separate tool for
-manually auditing repositories with the same configuration.
+auditing repositories with the same configuration.
+The merge queue of this repository runs `analyze --org rust-lang` and fails if
+zizmor reports findings so that changes to the zizmor policy or the zizmor
+version, don't introduce findings in rust-lang repositories.
 
 ## CLI usage
 
