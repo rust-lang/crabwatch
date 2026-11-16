@@ -179,9 +179,6 @@ repositories:
         disable: false
       ref-version-mismatch:
         disable: false
-      self-repository:
-        # TODO
-        disable: true
       stale-action-refs:
         disable: false
       unpinned-uses:
