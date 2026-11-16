@@ -1,28 +1,13 @@
 name: Setup Rust
-description: Install Rust toolchain and setup caching
-
-inputs:
-  components:
-    description: Whitespace-separated Rust components to install
-    required: false
-    default: ""
+description: Install the Rust toolchain pinned in rust-toolchain.toml and set up caching
 
 runs:
   using: composite
   steps:
     - name: Install Rust
       shell: bash
-      env:
-        RUST_VERSION: "1.100.0"
-        COMPONENTS: ${{ inputs.components }}
       run: |
-        rustc -vV || true
-        rustup toolchain install "$RUST_VERSION"
-        rustup default "$RUST_VERSION"
-        if [[ -n "$COMPONENTS" ]]; then
-          # COMPONENTS is intentionally unquoted for word-splitting of whitespace-separated components.
-          rustup component add --toolchain "$RUST_VERSION" $COMPONENTS
-        fi
+        rustup toolchain install --no-self-update
         rustc -vV
 
     - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
