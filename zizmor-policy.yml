@@ -177,9 +177,6 @@ repositories:
         disable: false
       github-app:
         disable: false
-      github-env:
-        # TODO
-        disable: true
       ref-version-mismatch:
         disable: false
       self-repository:
