@@ -171,6 +171,8 @@ repositories:
         disable: true
   rust-lang/cc-rs:
     rules:
+      artipacked:
+        disable: false
       github-env:
         # TODO
         disable: true
