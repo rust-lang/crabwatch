@@ -66,5 +66,5 @@ jobs:
           # Don't fail on repositories without GitHub Actions workflows.
           fail-on-no-inputs: false
           persona: pedantic
-          # Pinned, so that the Rust binary knows which version of zizmor is being used.
+          # Pinned, so that ci.yml can use the same version.
           version: 1.32.0

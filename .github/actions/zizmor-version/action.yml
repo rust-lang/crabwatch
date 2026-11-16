@@ -1,0 +1,17 @@
+name: Read zizmor version
+description: Read the zizmor version pinned in crabwatch.yml. Requires a checkout of this repository.
+
+outputs:
+  version:
+    description: The zizmor version, e.g. `1.32.0`
+    value: ${{ steps.read.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read zizmor version
+      id: read
+      shell: bash
+      run: |
+        version=$(yq --exit-status '.jobs.zizmor.steps[] | select(.uses == "zizmorcore/zizmor-action@*") | .with.version' .github/workflows/crabwatch.yml)
+        echo "version=$version" >> "$GITHUB_OUTPUT"
