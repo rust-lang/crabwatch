@@ -171,15 +171,23 @@ repositories:
         disable: true
   rust-lang/cc-rs:
     rules:
-      github-env:
-        # TODO
-        disable: true
+      artipacked:
+        disable: false
+      excessive-permissions:
+        disable: false
+      github-app:
+        disable: false
       ref-version-mismatch:
         disable: false
-      self-repository:
-        # TODO
-        disable: true
       stale-action-refs:
+        disable: false
+      superfluous-actions:
+        disable: false
+      template-injection:
+        disable: false
+      undocumented-permissions:
+        disable: false
+      unpinned-images:
         disable: false
       unpinned-uses:
         disable: false
