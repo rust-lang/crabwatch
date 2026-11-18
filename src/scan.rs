@@ -36,7 +36,12 @@ fn root_github_path(repo_path: &Path) -> anyhow::Result<Option<PathBuf>> {
     let github_path = repo_path.join(".github");
     let path = github_path
         .try_exists()
-        .with_context(|| format!("failed to inspect GitHub directory at {github_path:?}"))?
+        .with_context(|| {
+            format!(
+                "failed to inspect GitHub directory at {}",
+                github_path.display()
+            )
+        })?
         .then_some(github_path);
     Ok(path)
 }

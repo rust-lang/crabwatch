@@ -20,3 +20,31 @@ base64 = "0.23.1"
 
 [dev-dependencies]
 insta = "1.48.0"
+
+[lints.clippy]
+# `priority` gives the clippy pedantic group a lower priority than individual lints.
+# Useful to override pedantic lints.
+pedantic = { level = "warn", priority = -1 }
+
+# Restriction lints
+as_underscore = "warn"
+exit = "warn"
+filetype_is_file = "warn"
+float_cmp_const = "warn"
+get_unwrap = "warn"
+if_then_some_else_none = "warn"
+let_underscore_must_use = "warn"
+lossy_float_literal = "warn"
+map_err_ignore = "warn"
+map_with_unused_argument_over_ranges = "warn"
+mem_forget = "warn"
+rc_buffer = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+rest_pattern_accessible_field = "warn"
+unseparated_literal_suffix = "warn"
+verbose_file_reads = "warn"
+
+# Nursery lints
+trait_duplication_in_bounds = "warn"
+type_repetition_in_bounds = "warn"
+use_self = "warn"

@@ -108,12 +108,19 @@ pub fn cache_path(repo: &ParsedRepo, crabwatch_dir: &Path, sha: &str) -> PathBuf
 
 /// Removes everything except the cached clone for the current commit.
 fn prune_repo_cache(repo_cache_dir: &Path, keep_sha: &str) -> anyhow::Result<()> {
-    let directory = std::fs::read_dir(repo_cache_dir)
-        .with_context(|| format!("failed to read repository cache at {repo_cache_dir:?}",))?;
+    let directory = std::fs::read_dir(repo_cache_dir).with_context(|| {
+        format!(
+            "failed to read repository cache at {}",
+            repo_cache_dir.display()
+        )
+    })?;
 
     for entry in directory {
         let entry = entry.with_context(|| {
-            format!("failed to read an entry in repository cache at {repo_cache_dir:?}",)
+            format!(
+                "failed to read an entry in repository cache at {}",
+                repo_cache_dir.display()
+            )
         })?;
         let file_type = entry.file_type().with_context(|| {
             format!(

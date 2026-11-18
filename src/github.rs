@@ -17,7 +17,7 @@ pub async fn fetch_head_commit(
 ) -> anyhow::Result<RepositoryHead> {
     let body = head_commit_query(org, repo);
     let response: GraphQlResponse<GraphQlRepoData> = post_graphql(client, token, body).await?;
-    check_graphql_errors(&response.errors)?;
+    check_graphql_errors(response.errors.as_deref())?;
 
     response
         .head_commit()
@@ -52,7 +52,7 @@ async fn post_graphql<T: serde::de::DeserializeOwned>(
     Ok(response)
 }
 
-fn check_graphql_errors(errors: &Option<Vec<serde_json::Value>>) -> anyhow::Result<()> {
+fn check_graphql_errors(errors: Option<&[serde_json::Value]>) -> anyhow::Result<()> {
     if let Some(errors) = errors {
         bail!(
             "GitHub GraphQL API returned errors: {}",
@@ -137,7 +137,7 @@ pub async fn list_org_repos(
     loop {
         let body = list_repos_query(org, cursor.as_deref());
         let response: OrgReposResponse = post_graphql(client, github_token, body).await?;
-        check_graphql_errors(&response.errors)?;
+        check_graphql_errors(response.errors.as_deref())?;
 
         let connection = response
             .data
