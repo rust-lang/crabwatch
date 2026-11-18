@@ -25,7 +25,7 @@ pub async fn clone_repo(
         .context("failed to run git clone")?;
 
     if !output.status.success() {
-        let _ = std::fs::remove_dir_all(&temp_dest);
+        remove_temp_dir(&temp_dest);
         return Err(clone_failure(
             org,
             repo,
@@ -38,7 +38,7 @@ pub async fn clone_repo(
     let actual_sha = head_sha(&temp_dest).await?;
 
     if actual_sha != expected_sha {
-        let _ = std::fs::remove_dir_all(&temp_dest);
+        remove_temp_dir(&temp_dest);
         bail!(
             "cloned SHA {actual_sha} does not match expected SHA {expected_sha} \
              (the repository may have been updated during the clone)"
@@ -49,6 +49,21 @@ pub async fn clone_repo(
         .context("failed to move cloned repository into cache")?;
 
     Ok(())
+}
+
+/// Best-effort removal of a temporary clone directory.
+/// Called on error paths, so a failure here is only logged, at debug level
+/// because the path can contain the name of a private repository.
+fn remove_temp_dir(path: &Path) {
+    // When `git clone` fails, git already deletes the directory.
+    if let Err(error) = std::fs::remove_dir_all(path)
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        log::debug!(
+            "failed to remove temp clone directory {}: {error}",
+            path.display()
+        );
+    }
 }
 
 /// Builds the `git clone` command.
