@@ -146,6 +146,8 @@ repositories:
         disable: true
   rust-lang/rust-analyzer:
     rules:
+      artipacked:
+        disable: false
       ref-version-mismatch:
         disable: false
       stale-action-refs:
