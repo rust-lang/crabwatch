@@ -152,6 +152,8 @@ repositories:
         disable: false
       stale-action-refs:
         disable: false
+      template-injection:
+        disable: false
       unpinned-uses:
         disable: false
       cache-poisoning:
