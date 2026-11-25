@@ -286,6 +286,8 @@ repositories:
         disable: false
   rust-lang/josh-sync:
     rules:
+      excessive-permissions:
+        disable: false
       ref-version-mismatch:
         disable: false
       stale-action-refs:
@@ -298,6 +300,8 @@ repositories:
         disable: false
   rust-lang/a-mir-formality:
     rules:
+      excessive-permissions:
+        disable: false
       ref-version-mismatch:
         disable: false
       stale-action-refs:
@@ -306,6 +310,8 @@ repositories:
         disable: false
   rust-lang/stdarch:
     rules:
+      excessive-permissions:
+        disable: false
       ref-version-mismatch:
         disable: false
       stale-action-refs:
