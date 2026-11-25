@@ -300,6 +300,8 @@ repositories:
         disable: false
   rust-lang/a-mir-formality:
     rules:
+      excessive-permissions:
+        disable: false
       ref-version-mismatch:
         disable: false
       stale-action-refs:
